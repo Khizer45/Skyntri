@@ -8,13 +8,16 @@ export default function DashboardHeader({ isSidebarOpen, setIsSidebarOpen }) {
   // Determine the active tab name based on the current route
   const getActiveTabName = () => {
     const path = location.pathname;
+    
+    // Use exact matching for routes
     if (path === '/dashboard' || path === '/dashboard/') return 'Overview';
-    if (path.includes('/analysis')) return 'Skin Analysis';
-    if (path.includes('/scan')) return 'Ingredient Scan';
-    if (path.includes('/progress')) return 'Progress Tracking';
-    if (path.includes('/history')) return 'History';
-    if (path.includes('/products')) return 'Marketplace';
-    if (path.includes('/premium')) return 'Get Plus';
+    if (path === '/dashboard/analysis') return 'Skin Analysis';
+    if (path === '/dashboard/scan') return 'Ingredient Scan';
+    if (path === '/dashboard/progress') return 'Progress Tracking';
+    if (path === '/dashboard/history') return 'History';
+    if (path === '/dashboard/products') return 'Marketplace';
+    if (path === '/dashboard/premium') return 'Get Plus';
+    
     return 'Dashboard';
   };
 

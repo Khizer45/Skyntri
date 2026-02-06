@@ -1,13 +1,38 @@
 import React from "react";
-// ADD 'Sparkles' HERE IN THE LIST
-import { Sparkles, Settings, Bell } from "lucide-react"; 
+import { Sparkles, Settings, Bell, Menu } from "lucide-react";
+import { useLocation } from "react-router-dom";
 
-export default function DashboardHeader({ activeTab, setActiveTab }) {
+export default function DashboardHeader({ isSidebarOpen, setIsSidebarOpen }) {
+  const location = useLocation();
+  
+  // Determine the active tab name based on the current route
+  const getActiveTabName = () => {
+    const path = location.pathname;
+    if (path === '/dashboard' || path === '/dashboard/') return 'Overview';
+    if (path.includes('/analysis')) return 'Skin Analysis';
+    if (path.includes('/scan')) return 'Ingredient Scan';
+    if (path.includes('/progress')) return 'Progress Tracking';
+    if (path.includes('/history')) return 'History';
+    if (path.includes('/products')) return 'Marketplace';
+    if (path.includes('/premium')) return 'Get Plus';
+    return 'Dashboard';
+  };
+
   return (
-    <header className="h-20 bg-white border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-[100] w-full">
-      <div>
-        <h1 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Skyntri Portal</h1>
-        <p className="text-lg font-black text-slate-900">{activeTab}</p>
+    <header className="h-20 bg-white border-b border-slate-100 flex items-center justify-between px-6 lg:px-10 sticky top-0 z-[100] w-full shadow-sm">
+      <div className="flex items-center gap-4">
+        {/* Hamburger Menu - Mobile Only */}
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="lg:hidden p-2.5 rounded-xl hover:bg-slate-100 text-slate-600 transition-colors"
+        >
+          <Menu size={24} />
+        </button>
+        
+        <div>
+          <h1 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Skyntri Portal</h1>
+          <p className="text-lg font-black text-slate-900">{getActiveTabName()}</p>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 relative z-[110]">
@@ -23,17 +48,12 @@ export default function DashboardHeader({ activeTab, setActiveTab }) {
           className="group flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl font-bold transition-all cursor-pointer hover:bg-slate-900 active:scale-95 shadow-lg relative pointer-events-auto"
         >
           <Sparkles size={18} />
-          <span>AI Assistant</span>
+          <span className="hidden sm:inline">AI Assistant</span>
         </button>
 
         {/* Settings */}
         <button
-          onClick={() => setActiveTab("Settings")}
-          className={`p-2.5 rounded-xl border transition-all cursor-pointer pointer-events-auto ${
-            activeTab === 'Settings'
-              ? 'bg-blue-50 border-blue-100 text-blue-600'
-              : 'bg-white border-slate-100 text-slate-400 hover:text-blue-600'
-          }`}
+          className="p-2.5 rounded-xl border bg-white border-slate-100 text-slate-400 hover:text-blue-600 transition-all cursor-pointer pointer-events-auto"
         >
           <Settings size={20} />
         </button>

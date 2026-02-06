@@ -90,7 +90,11 @@ export default function Marketplace() {
   );
 
   const handleAddToCart = (product) => {
-    setCart([...cart, product]);
+    // Check if product already exists in cart
+    const existingItem = cart.find(item => item.id === product.id);
+    if (!existingItem) {
+      setCart([...cart, product]);
+    }
     // Could show a toast notification here
   };
 

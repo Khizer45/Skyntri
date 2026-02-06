@@ -28,6 +28,7 @@ export default function DashboardHeader({ isSidebarOpen, setIsSidebarOpen }) {
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="lg:hidden p-2.5 rounded-xl hover:bg-slate-100 text-slate-600 transition-colors"
+          aria-label="Toggle sidebar menu"
         >
           <Menu size={24} />
         </button>

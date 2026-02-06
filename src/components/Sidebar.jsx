@@ -12,6 +12,7 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
         <div 
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-30 lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
+          aria-label="Close sidebar overlay"
         />
       )}
 
@@ -36,6 +37,7 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
           <button 
             onClick={() => setIsSidebarOpen(false)}
             className="lg:hidden p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-900 transition-colors"
+            aria-label="Close sidebar"
           >
             <X size={20} />
           </button>

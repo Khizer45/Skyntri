@@ -63,12 +63,20 @@ export default function Sidebar({ isSidebarOpen, setIsSidebarOpen }) {
           
           <div className="pt-6">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4 px-2">Shop</p>
-            <NavItem 
-              to="/dashboard/products" 
-              icon={<ShoppingBag size={20} />} 
-              label="Marketplace" 
-              color="text-emerald-600" 
-            />
+            <NavLink 
+              to="/marketplace" 
+              className={({ isActive }) => `
+                w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all duration-200
+                ${isActive 
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-100 scale-[1.02]" 
+                  : "text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                }
+              `}
+              onClick={() => setIsSidebarOpen(false)}
+            >
+              <ShoppingBag size={20} />
+              <span className="flex-1 text-left">Marketplace</span>
+            </NavLink>
           </div>
         </nav>
 

@@ -11,6 +11,8 @@ import Dashboard from "./pages/Dashboard";
 import DashboardOverview from "./pages/DashboardOverview";
 import AnalysisPage from "./pages/AnalysisPage";
 import IngredientScanPage from "./pages/IngredientScanPage";
+import Marketplace from "./pages/Marketplace";
+import Checkout from "./pages/Checkout";
 
 // Placeholder component for under-development pages
 function PlaceholderPage({ title }) {
@@ -30,6 +32,8 @@ function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/marketplace" element={<Marketplace />} />
+        <Route path="/checkout" element={<Checkout />} />
         
         {/* Dashboard with nested routes */}
         <Route path="/dashboard" element={<Dashboard />}>

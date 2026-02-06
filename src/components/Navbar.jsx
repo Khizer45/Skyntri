@@ -16,6 +16,7 @@ export default function Navbar() {
       <div className="hidden lg:flex gap-8 text-xs font-bold uppercase tracking-widest text-slate-500">
         <a href="#home" className="hover:text-blue-600 transition">Home</a>
         <a href="#solutions" className="hover:text-blue-600 transition">Solutions</a>
+        <Link to="/marketplace" className="hover:text-blue-600 transition">Marketplace</Link>
         <a href="#footer" className="hover:text-blue-600 transition">Team</a>
       </div>
 

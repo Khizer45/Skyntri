@@ -1,0 +1,73 @@
+
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python cache and test files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node.js and frontend build files
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# ML model weights - review before publishing
+*.pt
+*.pth
+*.onnx
+*.h5
+*.keras
+*.pkl
+*.joblib
+
+# Private datasets and generated data
+datasets/
+data/raw/
+data/processed/
+
+# User uploads and generated media
+uploads/
+media/
+
+# Python package artifacts
+*.egg-info/
+pip-wheel-metadata/
+wheels/

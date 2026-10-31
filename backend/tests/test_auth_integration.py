@@ -42,11 +42,6 @@ def test_authentication_integration(tmp_path, monkeypatch):
         lambda: None,
     )
 
-    # Clear authentication lockout state before the test
-    monkeypatch.setattr(
-        "app.routers.auth._failed_attempts",
-        {},
-    )
 
     try:
         with TestClient(app) as client:

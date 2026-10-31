@@ -44,10 +44,6 @@ def test_jwt_tampering_and_deactivated_account(
         lambda: None,
     )
 
-    monkeypatch.setattr(
-        "app.routers.auth._failed_attempts",
-        {},
-    )
 
     try:
         with TestClient(app) as client:

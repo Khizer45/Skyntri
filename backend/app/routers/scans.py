@@ -28,6 +28,7 @@ from app.services.ocr import (
     extract_ingredient_tokens,
     extract_text,
 )
+from app.services import rate_limit
 from app.services.uploads import save_upload
 
 
@@ -292,7 +293,7 @@ def _build_response(
     response_model=IngredientScanOut,
     status_code=status.HTTP_201_CREATED,
 )
-async def scan_ingredients(
+def scan_ingredients(
     image: UploadFile | None = File(
         default=None
     ),
@@ -316,6 +317,14 @@ async def scan_ingredients(
     2. Manual ingredient text
     3. OCR + manual correction/supplement
     """
+    rate_limit.enforce(
+        db,
+        "scan",
+        current_user.id,
+        settings.scan_per_hour,
+        message="Scan limit reached. Please try again later.",
+    )
+
     if image is None and not ingredients_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

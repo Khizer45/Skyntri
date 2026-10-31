@@ -1,12 +1,14 @@
-from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.config import settings
 from app.main import app
 from app.db.database import Base, get_db
+from app.services.image_gate import GateResult
+from tests.helpers import make_jpeg_bytes
 
 
 def test_skin_analysis_integration(tmp_path, monkeypatch):
@@ -44,11 +46,6 @@ def test_skin_analysis_integration(tmp_path, monkeypatch):
         lambda: None,
     )
 
-    # Clear login lockout state
-    monkeypatch.setattr(
-        "app.routers.auth._failed_attempts",
-        {},
-    )
 
     # ---------------------------------------------------------
     # Fake upload function
@@ -57,23 +54,17 @@ def test_skin_analysis_integration(tmp_path, monkeypatch):
     # but this test stores the file inside the temporary
     # test directory instead of the real uploads folder.
     # ---------------------------------------------------------
-    test_image_path = tmp_path / "analysis_test.jpg"
+    # Private uploads go to a temporary directory for this test.
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
 
-    def fake_save_upload(file, subfolder):
-        content = file.file.read()
-        test_image_path.write_bytes(content)
-
-        return "/uploads/analyses/analysis_test.jpg"
-
+    # The input gate is tested separately (tests/test_input_gate.py).
+    # Here it is forced to "accepted" so the API -> service -> DB flow
+    # can be tested with a controlled model result.
     monkeypatch.setattr(
-        "app.routers.analyses.save_upload",
-        fake_save_upload,
-    )
-
-    # Make the endpoint resolve the temporary test image
-    monkeypatch.setattr(
-        "app.routers.analyses._build_local_image_path",
-        lambda image_url: Path(test_image_path),
+        "app.routers.analyses.assess_image",
+        lambda image_path, track="facial_concerns": GateResult(
+            "accepted", "accepted", "Image accepted for analysis."
+        ),
     )
 
     # ---------------------------------------------------------
@@ -87,6 +78,8 @@ def test_skin_analysis_integration(tmp_path, monkeypatch):
         assert Path(image_path).exists()
 
         return {
+            "status": "completed",
+            "model_version": "test-model",
             "conditions": [
                 "Acne",
                 "Oily Skin",
@@ -145,11 +138,7 @@ def test_skin_analysis_integration(tmp_path, monkeypatch):
             # -------------------------------------------------
             # 2. Upload an image to /analyses/analyze
             # -------------------------------------------------
-            image_bytes = (
-                b"\xff\xd8\xff\xe0"
-                b"Skyntri integration test image"
-                b"\xff\xd9"
-            )
+            image_bytes = make_jpeg_bytes()
 
             response = client.post(
                 "/analyses/analyze",
@@ -174,9 +163,15 @@ def test_skin_analysis_integration(tmp_path, monkeypatch):
             # 3. Verify API response
             # -------------------------------------------------
             assert "analysis_id" in data
-            assert data["image_url"] == (
-                "/uploads/analyses/analysis_test.jpg"
-            )
+            # Private images are returned as short-lived signed URLs.
+            assert data["image_url"].startswith("/files/analyses/")
+            assert "sig=" in data["image_url"]
+            assert data["analysis_track"] == "facial_concerns"
+            assert data["model_version"] == "test-model"
+
+            image_response = client.get(data["image_url"])
+            assert image_response.status_code == 200
+            assert image_response.headers["content-type"] == "image/jpeg"
             assert data["conditions"] == [
                 "Acne",
                 "Oily Skin",

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
+import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -15,8 +15,12 @@ from app.schemas import (
     SkinAnalysisCreate,
     SkinAnalysisOut,
 )
-from app.services.skin_analysis import analyze_skin_image
-from app.services.uploads import save_upload
+from app.services import rate_limit
+from app.services.image_gate import RETAKE_GUIDANCE, assess_image
+from app.services.skin_analysis import InferenceBusyError, analyze_skin_image
+from app.services.uploads import delete_upload, resolve_upload_url, save_upload
+
+logger = logging.getLogger("skyntri.analysis")
 
 
 router = APIRouter(
@@ -39,45 +43,6 @@ VALID_SEVERITY_LEVELS = {
 # ============================================================
 # Helper functions
 # ============================================================
-
-def _remove_uploaded_file(image_path: Path) -> None:
-    """
-    Remove an uploaded image when the analysis pipeline or database
-    persistence fails.
-
-    Cleanup errors are intentionally ignored because they should not
-    replace the original application error.
-    """
-    try:
-        if image_path.exists():
-            image_path.unlink()
-    except OSError:
-        pass
-
-
-def _build_local_image_path(image_url: str) -> Path:
-    """
-    Convert an internal /uploads/... URL into the corresponding
-    local filesystem path.
-
-    Example:
-        /uploads/analyses/file.jpg
-
-    becomes:
-        <configured upload directory>/analyses/file.jpg
-    """
-    prefix = "/uploads/"
-
-    if not image_url.startswith(prefix):
-        raise ValueError("Invalid upload URL.")
-
-    relative_path = image_url.removeprefix(prefix)
-
-    if not relative_path:
-        raise ValueError("Invalid upload URL.")
-
-    return settings.upload_path / relative_path
-
 
 def _safe_analysis_error(exc: Exception) -> str:
     """
@@ -153,6 +118,30 @@ def _build_explanation(
 
 
 # ============================================================
+# Analysis tracks (Model A / Model B)
+# ============================================================
+
+TRACK_FACIAL = "facial_concerns"
+TRACK_DISEASE = "disease_screening"
+
+TRACK_LABELS = {
+    TRACK_FACIAL: "Facial skin concerns",
+    TRACK_DISEASE: "Skin disease screening support",
+}
+
+# Model B is not released: no disease class has passed the dataset,
+# external-validation and dermatology-review gates (SEC-MED-003).
+RELEASED_TRACKS = {TRACK_FACIAL}
+
+
+def _abstain(detail: dict) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=detail,
+    )
+
+
+# ============================================================
 # AI skin analysis
 # ============================================================
 
@@ -163,235 +152,164 @@ def _build_explanation(
 )
 def analyze_uploaded_skin_image(
     file: UploadFile = File(...),
+    track: str = Form(default=TRACK_FACIAL),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Complete authenticated AI skin-analysis endpoint.
+    Staged, abstaining skin-analysis pipeline (ML-01):
 
-    Flow:
+        1. rate limit + track check
+        2. secure upload validation and decoding (save_upload)
+        3. image quality + skin/non-skin eligibility + facial scope
+           (image_gate.assess_image)            -> abstain if not accepted
+        4. Model A inference with per-class thresholds
+                                                -> abstain if uncertain
+        5. persist result with track, model and gate versions
 
-        React
-          ↓
-        Upload image
-          ↓
-        save_upload()
-          ↓
-        Dataset 3 preprocessing
-          ↓
-        Dataset 3 multi-label inference
-          ↓
-        Optimized thresholds
-          ↓
-        Detected conditions
-          ↓
-        AI-estimated visible-pattern severity
-          ↓
-        Recommendations
-          ↓
-        Save SkinAnalysis in database
-          ↓
-        Return clean frontend response
-
-    The frontend receives:
-        - analysis_id
-        - image_url
-        - conditions
-        - recommendations
-        - confidence_score
-        - severity_level
-        - disclaimer
-
-    Internal model details such as:
-        - model name
-        - thresholds
-        - raw probabilities
-        - internal severity evidence
-
-    are NOT returned.
+    Rejected images are deleted immediately and never receive condition
+    labels. Abstentions return HTTP 422 with a reason code and guidance.
     """
+    track = (track or TRACK_FACIAL).strip().lower()
 
-    image_url: str | None = None
-    image_path: Path | None = None
+    if track not in TRACK_LABELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unknown analysis type.",
+        )
 
-    # ========================================================
-    # 1. Validate basic upload information
-    # ========================================================
+    if track not in RELEASED_TRACKS:
+        raise _abstain(
+            {
+                "code": "track_not_available",
+                "status": "unavailable",
+                "message": (
+                    "Skin disease screening support is not available yet. "
+                    "It will only be enabled after clinical review and "
+                    "independent validation. If you are worried about a "
+                    "skin condition or a changing mole or lesion, please "
+                    "see a dermatologist or doctor."
+                ),
+                "guidance": [],
+            }
+        )
 
-    if not file:
+    rate_limit.enforce(
+        db,
+        "analysis",
+        current_user.id,
+        settings.analysis_per_hour,
+        message="Analysis limit reached. Please try again later.",
+    )
+
+    if not file or not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Please upload a skin image.",
         )
 
-    if not file.filename:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The uploaded file has no filename.",
-        )
+    image_url = save_upload(file, "analyses")
+    image_path = resolve_upload_url(image_url)
 
-    # ========================================================
-    # 2. Save uploaded image
-    # ========================================================
-
-    try:
-        image_url = save_upload(
-            file,
-            "analyses",
-        )
-
-    except HTTPException:
-        raise
-
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The image could not be uploaded.",
-        ) from exc
-
-    # ========================================================
-    # 3. Resolve local image path
-    # ========================================================
-
-    try:
-        image_path = _build_local_image_path(
-            image_url
-        )
-
-    except ValueError as exc:
-        if image_path is not None:
-            _remove_uploaded_file(image_path)
-
+    if image_path is None or not image_path.exists():
+        delete_upload(image_url)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="The uploaded image path could not be resolved.",
-        ) from exc
-
-    # ========================================================
-    # 4. Verify image exists
-    # ========================================================
-
-    if not image_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="The uploaded image could not be found.",
+            detail="The uploaded image could not be processed.",
         )
 
-    # ========================================================
-    # 5. Run Dataset 3 AI analysis
-    # ========================================================
+    # --------------------------------------------------------
+    # Eligibility gate - the condition model is NOT called for
+    # rejected or uncertain images.
+    # --------------------------------------------------------
+    gate = assess_image(image_path, track=track)
+
+    if not gate.accepted:
+        delete_upload(image_url)
+        logger.info(
+            "analysis_abstained",
+            extra={
+                "event": "analysis_abstained",
+                "stage": "input_gate",
+                "reason": gate.reason_code,
+                "gate_version": gate.gate_version,
+                "track": track,
+            },
+        )
+        raise _abstain(gate.public_detail())
 
     try:
-        result = analyze_skin_image(
-            image_path
-        )
-
+        result = analyze_skin_image(image_path)
+    except InferenceBusyError as exc:
+        delete_upload(image_url)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The analysis service is busy. Please try again in a moment.",
+            headers={"Retry-After": "10"},
+        ) from exc
     except Exception as exc:
-        _remove_uploaded_file(image_path)
-
+        delete_upload(image_url)
+        logger.exception("analysis_failed", extra={"event": "analysis_failed"})
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=_safe_analysis_error(exc),
         ) from exc
 
-    # ========================================================
-    # 6. Extract clean service result
-    # ========================================================
+    if result.get("status") == "uncertain":
+        delete_upload(image_url)
+        logger.info(
+            "analysis_abstained",
+            extra={
+                "event": "analysis_abstained",
+                "stage": "model_uncertainty",
+                "reason": "model_uncertain",
+                "gate_version": gate.gate_version,
+                "model_version": result.get("model_version"),
+                "track": track,
+            },
+        )
+        raise _abstain(
+            {
+                "code": "model_uncertain",
+                "status": "uncertain",
+                "message": "We cannot confidently analyze this image. Please upload another photo.",
+                "guidance": RETAKE_GUIDANCE,
+                "gate_version": gate.gate_version,
+            }
+        )
 
-    conditions_raw = result.get(
-        "conditions",
-        [],
+    conditions_raw = result.get("conditions", [])
+    conditions = (
+        [str(c).strip() for c in conditions_raw if str(c).strip()]
+        if isinstance(conditions_raw, list)
+        else []
     )
+    conditions = list(dict.fromkeys(conditions))
 
-    if not isinstance(conditions_raw, list):
-        conditions = []
-
-    else:
-        conditions = [
-            str(condition).strip()
-            for condition in conditions_raw
-            if str(condition).strip()
-        ]
-
-    # Remove duplicates while preserving order.
-    conditions = list(
-        dict.fromkeys(conditions)
-    )
-
-    recommendations = result.get(
-        "recommendations",
-        {},
-    )
-
+    recommendations = result.get("recommendations", {})
     if not isinstance(recommendations, dict):
         recommendations = {}
 
-    # Current schema/database uses percentage confidence.
-    confidence_score = result.get(
-        "confidence_score",
-        0.0,
-    )
-
     try:
-        confidence_score = float(
-            confidence_score
-        )
-
+        confidence_score = float(result.get("confidence_score", 0.0))
     except (TypeError, ValueError):
         confidence_score = 0.0
+    confidence_score = max(0.0, min(100.0, confidence_score))
 
-    confidence_score = max(
-        0.0,
-        min(
-            100.0,
-            confidence_score,
-        ),
+    severity_level = _normalize_severity(result.get("severity_level", "Low"))
+
+    disclaimer = str(result.get("disclaimer") or "").strip() or (
+        "This result is an AI-estimated assessment of visible "
+        "skin patterns, not a medical diagnosis."
     )
 
-    severity_level = _normalize_severity(
-        result.get(
-            "severity_level",
-            "Low",
-        )
+    predicted_condition = (
+        ", ".join(conditions)
+        if conditions
+        else "No specific visible condition detected"
     )
 
-    disclaimer = str(
-        result.get(
-            "disclaimer",
-            (
-                "This result is an AI-estimated assessment of visible "
-                "skin patterns, not a medical diagnosis."
-            ),
-        )
-    ).strip()
-
-    if not disclaimer:
-        disclaimer = (
-            "This result is an AI-estimated assessment of visible "
-            "skin patterns, not a medical diagnosis."
-        )
-
-    # ========================================================
-    # 7. Build DB condition summary
-    # ========================================================
-
-    if conditions:
-        predicted_condition = ", ".join(
-            conditions
-        )
-    else:
-        predicted_condition = (
-            "No specific visible condition detected"
-        )
-
-    explanation = _build_explanation(
-        conditions,
-        severity_level,
-    )
-
-    # ========================================================
-    # 8. Create database record
-    # ========================================================
+    model_version = str(result.get("model_version") or settings.facial_model_version)
 
     analysis = SkinAnalysis(
         user_id=current_user.id,
@@ -399,27 +317,34 @@ def analyze_uploaded_skin_image(
         predicted_condition=predicted_condition,
         confidence_score=confidence_score,
         severity_level=severity_level,
-        explanation=explanation,
+        explanation=_build_explanation(conditions, severity_level),
+        analysis_track=track,
+        model_version=model_version,
+        gate_version=gate.gate_version,
     )
 
     try:
         db.add(analysis)
         db.commit()
         db.refresh(analysis)
-
     except Exception as exc:
         db.rollback()
-
-        _remove_uploaded_file(image_path)
-
+        delete_upload(image_url)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The skin analysis result could not be saved.",
         ) from exc
 
-    # ========================================================
-    # 9. Return ONLY public API fields
-    # ========================================================
+    logger.info(
+        "analysis_completed",
+        extra={
+            "event": "analysis_completed",
+            "track": track,
+            "model_version": model_version,
+            "gate_version": gate.gate_version,
+            "condition_count": len(conditions),
+        },
+    )
 
     return SkinAnalysisAnalyzeOut(
         analysis_id=analysis.id,
@@ -429,6 +354,10 @@ def analyze_uploaded_skin_image(
         confidence_score=confidence_score,
         severity_level=severity_level,
         disclaimer=disclaimer,
+        analysis_track=track,
+        analysis_track_label=TRACK_LABELS[track],
+        model_version=model_version,
+        gate_version=gate.gate_version,
     )
 
 
@@ -461,9 +390,33 @@ def save_analysis_result(
         payload.severity_level
     )
 
+    # A client must not be able to attach (and later receive a signed URL
+    # for) another user's private file.
+    image_url = payload.image_url
+    if image_url and (image_url.startswith("/uploads/") or image_url.startswith("/files/")):
+        owned = (
+            db.query(SkinAnalysis.id)
+            .filter(
+                SkinAnalysis.user_id == current_user.id,
+                SkinAnalysis.image_url == image_url,
+            )
+            .first()
+        )
+        if not owned:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The referenced image is not available.",
+            )
+    elif image_url and not image_url.startswith("https://"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid image reference.",
+        )
+
     analysis = SkinAnalysis(
         user_id=current_user.id,
-        image_url=payload.image_url,
+        image_url=image_url,
+        analysis_track="facial_concerns",
         predicted_condition=payload.predicted_condition,
         confidence_score=payload.confidence_score,
         severity_level=severity_level,

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, ScanFace, Sparkles, XCircle } from 'lucide-react'
+import { AlertTriangle, Camera, CheckCircle2, Info, ScanFace, Sparkles, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import Button from '../components/Button.jsx'
 import Card from '../components/Card.jsx'
@@ -14,19 +14,33 @@ export default function SkinAnalysis() {
   const [analyzing, setAnalyzing] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
+  const [abstention, setAbstention] = useState(null)
+  const [track, setTrack] = useState('facial_concerns')
   const { showToast } = useToast()
 
   const handleAnalyze = async () => {
     if (!file) return
     setAnalyzing(true)
     setError('')
+    setAbstention(null)
 
     try {
-      const res = await api.analyzeSkin(file)
+      const res = await api.analyzeSkin(file, track)
       setResult(res)
       showToast('Skin analysis complete.', 'success')
     } catch (err) {
-      setError(err.message || 'Analysis failed. Please try again.')
+      if (err.status === 422 && err.code) {
+        // The image was not analyzed (not skin, poor quality, uncertain,
+        // or the analysis type is not available). No labels are shown.
+        setResult(null)
+        setAbstention({
+          code: err.code,
+          message: err.message,
+          guidance: err.guidance || [],
+        })
+      } else {
+        setError(err.message || 'Analysis failed. Please try again.')
+      }
     } finally {
       setAnalyzing(false)
     }
@@ -43,15 +57,70 @@ export default function SkinAnalysis() {
             </h2>
           </div>
 
+          <fieldset className="mb-4">
+            <legend className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+              What would you like to analyze?
+            </legend>
+            <div className="space-y-2">
+              {api.ANALYSIS_TRACKS.map((option) => (
+                <label
+                  key={option.id}
+                  className={`flex gap-3 rounded-lg border p-3 text-sm ${
+                    option.available
+                      ? 'cursor-pointer border-neutral-200 dark:border-neutral-700'
+                      : 'cursor-not-allowed border-dashed border-neutral-200 opacity-70 dark:border-neutral-700'
+                  } ${
+                    track === option.id
+                      ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-900/20'
+                      : ''
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="analysis-track"
+                    value={option.id}
+                    checked={track === option.id}
+                    disabled={!option.available}
+                    onChange={() => setTrack(option.id)}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="font-medium text-neutral-800 dark:text-neutral-100">
+                      {option.label}
+                      {!option.available && (
+                        <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                          Coming later
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400">
+                      {option.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           <ImageUploader
-            label="Upload a clear photo of the affected area"
-            hint="Good lighting, in-focus, JPEG/PNG/WebP up to 10MB"
+            label="Upload a clear photo of your face"
+            hint="Front-facing or close-up, good light, in focus. JPEG/PNG/WebP up to 10MB"
             onChange={(f) => {
               setFile(f)
               setResult(null)
               setError('')
+              setAbstention(null)
             }}
           />
+
+          <div className="mt-3 flex gap-2 rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:bg-neutral-800/60 dark:text-neutral-300">
+            <Camera className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              Use natural, even light without filters. Keep the skin in focus and
+              make it fill most of the photo. Photos that are not skin, or are too
+              dark or blurry, will not be analyzed.
+            </p>
+          </div>
 
           {error && (
             <p className="mt-3 text-xs text-red-600 dark:text-red-400">
@@ -76,12 +145,46 @@ export default function SkinAnalysis() {
             </Card>
           )}
 
-          {!analyzing && !result && (
+          {!analyzing && abstention && (
+            <Card className="p-5">
+              <div className="flex gap-3">
+                <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                    {abstention.code === 'track_not_available'
+                      ? 'Not available yet'
+                      : 'This image was not analyzed'}
+                  </h3>
+                  <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
+                    {abstention.message}
+                  </p>
+                  {abstention.guidance.length > 0 && (
+                    <ul className="mt-3 space-y-1.5 text-sm text-neutral-600 dark:text-neutral-300">
+                      {abstention.guidance.map((tip) => (
+                        <li key={tip} className="flex gap-2">
+                          <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand-400" />
+                          {tip}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {!analyzing && !result && !abstention && (
             <Card className="flex h-full min-h-64 items-center justify-center p-8 text-center">
               <p className="text-sm text-neutral-500 dark:text-neutral-400">
                 Upload an image and run analysis to see your results here.
               </p>
             </Card>
+          )}
+
+          {!analyzing && result && (
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+              {result.trackLabel} · AI estimate, not a diagnosis
+            </p>
           )}
 
           {!analyzing && result && (

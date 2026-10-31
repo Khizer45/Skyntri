@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -351,6 +353,27 @@ def _unique_preserve_order(items: list[str]) -> list[str]:
 
 
 # ============================================================
+# Inference concurrency (SEC-UP-007)
+# ============================================================
+
+class InferenceBusyError(RuntimeError):
+    """Raised when too many inferences are already running."""
+
+
+_inference_slots = threading.BoundedSemaphore(
+    max(1, int(settings.max_concurrent_inference))
+)
+
+
+def model_loaded() -> bool:
+    return load_dataset3_model.cache_info().currsize > 0
+
+
+def model_artifact_available() -> bool:
+    return Path(settings.dataset3_model).is_file()
+
+
+# ============================================================
 # Model loading
 # ============================================================
 
@@ -508,10 +531,20 @@ def predict_dataset3(
     """
     model = load_dataset3_model()
 
-    prediction = model.predict(
-        image_array,
-        verbose=0,
-    )
+    if not _inference_slots.acquire(
+        timeout=max(0.1, float(settings.inference_queue_timeout_seconds))
+    ):
+        raise InferenceBusyError(
+            "The analysis service is busy. Please try again shortly."
+        )
+
+    try:
+        prediction = model.predict(
+            image_array,
+            verbose=0,
+        )
+    finally:
+        _inference_slots.release()
 
     prediction_array = np.asarray(prediction)
 
@@ -940,6 +973,19 @@ def analyze_skin_image(
         image_array
     )
 
+    # --------------------------------------------------------
+    # Safe abstention (SEC-ML-004): if no label - not even
+    # "Normal Skin" - reaches its validated threshold, the model
+    # has no confident answer for this image. Do not force one.
+    # --------------------------------------------------------
+    if not dataset3_result.get("conditions"):
+        return {
+            "status": "uncertain",
+            "conditions": [],
+            "model_version": settings.facial_model_version,
+            "_internal": {"dataset3": dataset3_result},
+        }
+
     conditions_internal = get_detected_conditions(
         dataset3_result
     )
@@ -972,6 +1018,8 @@ def analyze_skin_image(
     # --------------------------------------------------------
 
     result = {
+        "status": "completed",
+        "model_version": settings.facial_model_version,
         "conditions": user_conditions,
         "recommendations": recommendations,
         "confidence_score": confidence_score,

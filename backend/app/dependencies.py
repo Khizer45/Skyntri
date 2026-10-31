@@ -13,6 +13,7 @@ def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    """SEC-AUTH-001: every private endpoint depends on this guard."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -30,3 +31,18 @@ def get_current_user(
         raise credentials_exception
 
     return user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """
+    SEC-AUTH-003 / SEC-AUTH-004: server-enforced administrator check.
+
+    The role is read from the database, never from the token payload or
+    the client.
+    """
+    if (current_user.role or "user") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator access is required.",
+        )
+    return current_user

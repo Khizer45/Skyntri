@@ -96,9 +96,24 @@ async function request(path, options = {}) {
   if (!response.ok) {
     let message = 'Request failed.'
 
+    let code = null
+    let guidance = []
+
     if (typeof data === 'object' && data !== null) {
       if (typeof data.detail === 'string') {
         message = data.detail
+      } else if (
+        data.detail &&
+        typeof data.detail === 'object' &&
+        !Array.isArray(data.detail)
+      ) {
+        // Structured errors, e.g. analysis abstentions:
+        // { code, status, message, guidance }
+        message = data.detail.message || message
+        code = data.detail.code || null
+        guidance = Array.isArray(data.detail.guidance)
+          ? data.detail.guidance
+          : []
       } else if (Array.isArray(data.detail)) {
         message = data.detail
           .map((item) => item.msg || 'Invalid request.')
@@ -110,10 +125,17 @@ async function request(path, options = {}) {
       message = data
     }
 
+    if (response.status === 401 && token) {
+      // Expired or revoked session: drop the stored token.
+      clearAuthToken()
+    }
+
     const error = new Error(message)
 
     error.status = response.status
     error.data = data
+    error.code = code
+    error.guidance = guidance
 
     throw error
   }
@@ -166,6 +188,10 @@ function mapAnalysis(data) {
     severity: data?.severity_level || 'Low',
 
     disclaimer: data?.disclaimer || '',
+
+    track: data?.analysis_track || 'facial_concerns',
+    trackLabel: data?.analysis_track_label || 'Facial skin concerns',
+    modelVersion: data?.model_version || '',
 
     explanation: conditions.length
       ? `The analysis identified these visible skin patterns: ${conditions.join(', ')}.`
@@ -396,7 +422,24 @@ export async function deleteAccount() {
 // Skin analysis
 // ---------------------------------------------------------------------------
 
-export async function analyzeSkin(imageFile) {
+export const ANALYSIS_TRACKS = [
+  {
+    id: 'facial_concerns',
+    label: 'Facial skin concerns',
+    description:
+      'Acne, blackheads, dark spots, pores, wrinkles, oiliness, dryness, redness and eye bags on the face.',
+    available: true,
+  },
+  {
+    id: 'disease_screening',
+    label: 'Skin disease screening support',
+    description:
+      'Conditions such as eczema or psoriasis on the face or body. Not available yet: it needs clinical review and independent validation first.',
+    available: false,
+  },
+]
+
+export async function analyzeSkin(imageFile, track = 'facial_concerns') {
   if (!imageFile) {
     throw new Error('Please select a skin image.')
   }
@@ -404,6 +447,7 @@ export async function analyzeSkin(imageFile) {
   const formData = new FormData()
 
   formData.append('file', imageFile)
+  formData.append('track', track)
 
   return mapAnalysis(
     await request('/analyses/analyze', {

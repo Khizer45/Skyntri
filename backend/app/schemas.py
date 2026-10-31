@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer
+
+from app.services.uploads import signed_url
 
 
 # ============================================================
@@ -78,9 +80,14 @@ class UserOut(BaseModel):
     email: EmailStr
     skin_type: str
     avatar_url: str | None = None
+    role: str = "user"
     notify_analysis: bool
     notify_reports: bool
     created_at: datetime
+
+    @field_serializer("avatar_url")
+    def _sign_avatar(self, value: str | None) -> str | None:
+        return signed_url(value)
 
 
 class TokenResponse(BaseModel):
@@ -128,6 +135,12 @@ class ContactMessageRequest(BaseModel):
         min_length=1,
         max_length=4000,
     )
+
+
+class ContactSubmitOut(BaseModel):
+    id: str
+    created_at: datetime
+    message: str
 
 
 class ContactMessageOut(BaseModel):
@@ -182,7 +195,8 @@ class SkinAnalysisOut(BaseModel):
     """
 
     model_config = ConfigDict(
-        from_attributes=True
+        from_attributes=True,
+        protected_namespaces=(),
     )
 
     id: str
@@ -191,7 +205,13 @@ class SkinAnalysisOut(BaseModel):
     confidence_score: float
     severity_level: SeverityLevel
     explanation: str | None
+    analysis_track: str | None = "facial_concerns"
+    model_version: str | None = None
     created_at: datetime
+
+    @field_serializer("image_url")
+    def _sign_image(self, value: str | None) -> str | None:
+        return signed_url(value)
 
 
 class SkinAnalysisRecommendations(BaseModel):
@@ -231,6 +251,8 @@ class SkinAnalysisAnalyzeOut(BaseModel):
     The representative confidence score is retained for the frontend.
     """
 
+    model_config = ConfigDict(protected_namespaces=())
+
     analysis_id: str
     image_url: str
 
@@ -251,6 +273,16 @@ class SkinAnalysisAnalyzeOut(BaseModel):
         min_length=1,
         max_length=2000,
     )
+
+    analysis_track: str = "facial_concerns"
+    analysis_track_label: str = "Facial skin concerns"
+    model_version: str | None = None
+    gate_version: str | None = None
+    status: str = "completed"
+
+    @field_serializer("image_url")
+    def _sign_image(self, value: str) -> str:
+        return signed_url(value) or value
 
 
 # ============================================================
@@ -322,6 +354,10 @@ class IngredientScanOut(BaseModel):
     )
     created_at: datetime
 
+    @field_serializer("image_url")
+    def _sign_image(self, value: str | None) -> str | None:
+        return signed_url(value)
+
 
 # ============================================================
 # Progress checker
@@ -341,6 +377,10 @@ class ProgressCheckOut(BaseModel):
         default_factory=list
     )
     created_at: datetime
+
+    @field_serializer("before_image_url", "after_image_url")
+    def _sign_images(self, value: str) -> str:
+        return signed_url(value) or value
 
 
 # ============================================================

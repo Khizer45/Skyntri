@@ -1,14 +1,12 @@
-import shutil
-import uuid
-
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import User
 from app.dependencies import get_current_user
 from app.schemas import NotificationSettingsRequest, ProfileUpdateRequest, UserOut
+from app.services import rate_limit
+from app.services.uploads import delete_upload, save_upload
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -55,22 +53,23 @@ def upload_avatar(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
-        from fastapi import HTTPException, status
+    """Avatar upload uses the same validated, private storage as analyses."""
+    rate_limit.enforce(db, "avatar", current_user.id, 20)
 
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Please upload a JPEG, PNG, or WebP image.")
+    new_url = save_upload(file, "avatars")
+    old_url = current_user.avatar_url
 
-    avatars_dir = settings.upload_path / "avatars"
-    avatars_dir.mkdir(parents=True, exist_ok=True)
+    current_user.avatar_url = new_url
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        delete_upload(new_url)
+        raise
 
-    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
-    filename = f"{current_user.id}_{uuid.uuid4().hex[:8]}.{ext}"
-    dest = avatars_dir / filename
-
-    with dest.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    current_user.avatar_url = f"/uploads/avatars/{filename}"
-    db.commit()
     db.refresh(current_user)
+
+    if old_url and old_url != new_url:
+        delete_upload(old_url)
+
     return current_user

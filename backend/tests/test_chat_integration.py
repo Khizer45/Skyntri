@@ -41,11 +41,6 @@ def test_chat_integration(tmp_path, monkeypatch):
         lambda: None,
     )
 
-    # Clear authentication lockout state
-    monkeypatch.setattr(
-        "app.routers.auth._failed_attempts",
-        {},
-    )
 
     # ---------------------------------------------------------
     # Disable external Gemini call.

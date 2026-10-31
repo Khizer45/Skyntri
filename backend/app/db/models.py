@@ -84,6 +84,15 @@ class User(Base):
         nullable=False,
     )
 
+    # Server-side role (SEC-AUTH-003). "user" or "admin". Never taken from
+    # client input; granted through ADMIN_EMAILS or a database update.
+    role: Mapped[str] = mapped_column(
+        String,
+        default="user",
+        server_default="user",
+        nullable=False,
+    )
+
     # Notification preferences
     notify_analysis: Mapped[bool] = mapped_column(
         Boolean,
@@ -141,9 +150,10 @@ class PasswordResetToken(Base):
     """
     Password-reset token storage.
 
-    Current local implementation generates/stores reset tokens.
-    Email delivery can be integrated later without changing the
-    user model.
+    SECURITY (SEC-AUTH-007): the `token` column stores only the SHA-256
+    digest of the random token that is e-mailed to the user. The raw token
+    is never stored, logged in production, or returned by the API. Tokens
+    are single-use and expire after PASSWORD_RESET_TOKEN_MINUTES.
     """
 
     __tablename__ = "password_reset_tokens"
@@ -314,6 +324,26 @@ class SkinAnalysis(Base):
 
     explanation: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
+    )
+
+    # Which analysis track produced the result (FR-06):
+    #   facial_concerns    -> Model A
+    #   disease_screening  -> Model B (not released yet)
+    # Historical rows without a value were produced by Model A.
+    analysis_track: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        default="facial_concerns",
+    )
+
+    model_version: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    gate_version: Mapped[str | None] = mapped_column(
+        String,
         nullable=True,
     )
 
@@ -763,6 +793,54 @@ class ChatMessage(Base):
         Index(
             "ix_chat_messages_user_created",
             "user_id",
+            "created_at",
+        ),
+    )
+
+
+# ============================================================
+# Rate-limit events
+# ============================================================
+
+class RateLimitEvent(Base):
+    """
+    One row per rate-limited action (login failure, reset request, upload,
+    chat message ...). Stored in the shared database so limits are enforced
+    consistently across workers and instances (SK-07 / SEC-APP-005).
+
+    Keys are hashed so e-mail addresses and IPs are not stored in clear.
+    Old rows are pruned opportunistically.
+    """
+
+    __tablename__ = "rate_limit_events"
+
+    id: Mapped[str] = mapped_column(
+        String,
+        primary_key=True,
+        default=gen_uuid,
+    )
+
+    bucket: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    key_hash: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_rate_limit_bucket_key_created",
+            "bucket",
+            "key_hash",
             "created_at",
         ),
     )

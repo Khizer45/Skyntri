@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import desc
@@ -13,6 +12,7 @@ from app.db.models import ProgressCheck, User
 from app.dependencies import get_current_user
 from app.schemas import ProgressCheckOut
 from app.services.progress import compute_progress_score
+from app.services import rate_limit
 from app.services.uploads import save_upload
 
 router = APIRouter(
@@ -137,6 +137,14 @@ def check_progress(
     The result is an AI/image-processing estimate and not a medical
     diagnosis or clinical measurement.
     """
+
+    rate_limit.enforce(
+        db,
+        "progress",
+        current_user.id,
+        settings.progress_per_hour,
+        message="Progress comparison limit reached. Please try again later.",
+    )
 
     before_url: str | None = None
     after_url: str | None = None

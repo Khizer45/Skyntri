@@ -33,6 +33,12 @@ Set these in the hosting platform's secret/config store, or in `backend/.env` fo
 | `FACIAL_MODEL_VERSION` | `facial-concerns-effnetb0-v1` | update with the artifact | Stored with each analysis |
 | `SKIN_GATE_MODEL_PATH` | `models/skin_gate.keras` | trained gate | Optional; heuristic used if missing |
 | `SKIN_GATE_ACCEPT_THRESHOLD` / `SKIN_GATE_REJECT_THRESHOLD` | `0.80` / `0.40` | from validation | Trained-gate decision band |
+| `FACIAL_MODEL_METADATA_PATH` | `models/facial_concerns_metadata.json` | the exported JSON | Classes, thresholds, image size, version for a retrained Model A (built-in values if missing) |
+| `DISEASE_SCREENING_ENABLED` | `false` | `true` **only after clinical review** | Turns on Model B |
+| `DISEASE_MODEL_PATH` / `DISEASE_MODEL_METADATA_PATH` | `models/skin_disease_efficientnet.keras` / `models/skin_disease_metadata.json` | exported files | Model B artifact and metadata |
+| `SHOP_CURRENCY` | `PKR` | keep | Default currency shown in the shop |
+| `PRICE_STALE_AFTER_DAYS` | `30` | keep | Older prices are labelled "may be outdated" |
+| `ORDER_PER_HOUR` / `MAX_CART_QUANTITY` | `20` / `10` | tune | Order rate limit per user, max quantity per cart line |
 | `MODEL_WARMUP` | `false` | `true` (Docker default) | Load the model at start-up |
 | `LLM_ENABLED`, `LLM_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, `LLM_MAX_OUTPUT_TOKENS` | disabled | only after privacy review | Optional assistant provider; local fallback always works |
 

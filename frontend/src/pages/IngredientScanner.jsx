@@ -1,5 +1,6 @@
 import { AlertOctagon, AlertTriangle, CheckCircle2, FlaskConical } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import Button from '../components/Button.jsx'
 import Card from '../components/Card.jsx'
 import ImageUploader from '../components/ImageUploader.jsx'
@@ -98,9 +99,25 @@ export default function IngredientScanner() {
 
       {!scanning && result && (
         <section className="mt-6">
-          <h3 className="mb-3 text-sm font-semibold text-neutral-800 dark:text-neutral-100">
-            Detected ingredients
-          </h3>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+              Detected ingredients
+            </h3>
+            {result.ingredients.some((i) => i.status === 'Beneficial') && (
+              <Link
+                to={`/shop?ingredients=${encodeURIComponent(
+                  result.ingredients
+                    .filter((i) => i.status === 'Beneficial')
+                    .slice(0, 5)
+                    .map((i) => i.name)
+                    .join(', ')
+                )}`}
+                className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
+              >
+                Find products with these beneficial ingredients →
+              </Link>
+            )}
+          </div>
 
           {result.ingredients.length === 0 ? (
             <Card className="p-5 text-sm text-neutral-500">

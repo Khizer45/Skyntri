@@ -25,7 +25,7 @@
 | SK-13 Public endpoint abuse | Medium | Confirmed | **Fixed** (rate limits on contact, register, login, reset, analysis, scan, progress, chat, avatar) | `services/rate_limit.py`, routers | `test_contact_submission_is_rate_limited` |
 | ML-01 Non-skin images get labels | Critical | Confirmed (sample `test_input_image.jpg` = solid blue, `test_skin.jpg` = solid black; both reached the model) | **Partial** — staged gate + abstention implemented; gate is an interim heuristic, not a trained/validated classifier | `services/image_gate.py`, `routers/analyses.py`, `services/skin_analysis.py` | `tests/test_input_gate.py`; sample evaluation in `docs/ML_INPUT_GATE.md` |
 | SK-ML-01 Disease vs facial tracks | High | Design issue | **Fixed for scope**: Model B is not released; API rejects it with `track_not_available`; results record `analysis_track` + `model_version` | `routers/analyses.py`, `SkinAnalysis` columns | `test_disease_track_is_not_available_yet` |
-| SK-PROD-01 Product/price data | Medium | Feature not built | **Not started** (blocked by release gate and by lack of verified product/price data) | — | — |
+| SK-PROD-01 Product/price data | Medium | Feature not built at audit time | **Addressed in the shop design**: admin-entered prices carry source + checked date, stale prices labelled, sponsored items labelled and not boosted, no products suggested after disease results, patch-test cautions | `routers/shop.py`, `services/shop.py` | `tests/test_shop.py` |
 
 ## Additional issues found during the re-audit
 

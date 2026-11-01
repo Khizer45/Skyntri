@@ -148,6 +148,17 @@ class Settings(BaseSettings):
         "models/EfficientNetB0_weighted_focal_finetuned_best.keras"
     )
     facial_model_version: str = "facial-concerns-effnetb0-v1"
+    # Exported by ml/notebooks/01_facial_skin_concerns_efficientnet.ipynb.
+    # Optional: classes, thresholds, image size and version for Model A.
+    facial_model_metadata_path: str = "models/facial_concerns_metadata.json"
+
+    # Model B - skin disease screening support (face and body).
+    # Exported by ml/notebooks/02_skin_disease_screening_efficientnet.ipynb.
+    # The track stays unavailable unless BOTH files exist AND
+    # DISEASE_SCREENING_ENABLED=true (set only after clinical review).
+    disease_screening_enabled: bool = False
+    disease_model_path: str = "models/skin_disease_efficientnet.keras"
+    disease_model_metadata_path: str = "models/skin_disease_metadata.json"
 
     # Optional trained skin / non-skin gate (binary Keras model whose single
     # sigmoid output is P(skin)). When absent the interim heuristic gate is
@@ -159,6 +170,16 @@ class Settings(BaseSettings):
     # Load the facial model during start-up so the first request is not slow
     # and readiness reflects the real state.
     model_warmup: bool = False
+
+    # ========================================================================
+    # Shop / orders
+    # ========================================================================
+
+    shop_currency: str = "PKR"
+    # Prices older than this are labelled "may be outdated" (SEC-PROD-001).
+    price_stale_after_days: int = 30
+    order_per_hour: int = 20
+    max_cart_quantity: int = 10
 
     # ========================================================================
     # LLM Configuration
@@ -227,6 +248,18 @@ class Settings(BaseSettings):
     @property
     def dataset3_model(self) -> Path:
         return self.project_root / self.dataset3_model_path
+
+    @property
+    def facial_model_metadata(self) -> Path:
+        return self.project_root / self.facial_model_metadata_path
+
+    @property
+    def disease_model(self) -> Path:
+        return self.project_root / self.disease_model_path
+
+    @property
+    def disease_model_metadata(self) -> Path:
+        return self.project_root / self.disease_model_metadata_path
 
     @property
     def skin_gate_model(self) -> Path:

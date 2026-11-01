@@ -353,6 +353,69 @@ def _unique_preserve_order(items: list[str]) -> list[str]:
 
 
 # ============================================================
+# Model configuration (classes / thresholds / input size)
+# ============================================================
+#
+# When you retrain Model A with ml/notebooks/01_facial_skin_concerns_
+# efficientnet.ipynb, copy the exported files into backend/models/ and
+# point the settings at them:
+#
+#   DATASET3_MODEL_PATH=models/facial_concerns_efficientnet.keras
+#   FACIAL_MODEL_METADATA_PATH=models/facial_concerns_metadata.json
+#
+# The metadata JSON supplies classes, per-class thresholds, image size
+# and model version. Without it, the built-in values above are used
+# (they belong to the original EfficientNetB0 artifact).
+
+import json  # noqa: E402
+import logging  # noqa: E402
+
+_logger = logging.getLogger("skyntri.models")
+
+
+@lru_cache(maxsize=1)
+def facial_model_config() -> dict[str, Any]:
+    default = {
+        "classes": list(DATASET3_CLASSES),
+        "thresholds": dict(DATASET3_THRESHOLDS),
+        "image_size": IMAGE_SIZE[0],
+        "model_version": settings.facial_model_version,
+        "source": "built-in",
+    }
+
+    meta_path = Path(settings.facial_model_metadata)
+    if not meta_path.is_file():
+        return default
+
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        classes = [str(c) for c in meta["classes"]]
+        thresholds = {c: float(meta["thresholds"][c]) for c in classes}
+        size = int(meta.get("image_size", IMAGE_SIZE[0]))
+        if not classes or not (32 <= size <= 1024):
+            raise ValueError("invalid classes or image_size")
+        if not all(0.0 < t < 1.0 for t in thresholds.values()):
+            raise ValueError("thresholds must be between 0 and 1")
+    except Exception as exc:
+        raise ValueError(f"Invalid facial model metadata file: {exc}") from exc
+
+    unknown = [c for c in classes if c not in CONDITION_RECOMMENDATIONS and c != "Normal Skin"]
+    if unknown:
+        _logger.warning(
+            "facial_model_unknown_classes",
+            extra={"event": "facial_model_unknown_classes", "classes": unknown},
+        )
+
+    return {
+        "classes": classes,
+        "thresholds": thresholds,
+        "image_size": size,
+        "model_version": str(meta.get("model_version") or settings.facial_model_version),
+        "source": meta_path.name,
+    }
+
+
+# ============================================================
 # Inference concurrency (SEC-UP-007)
 # ============================================================
 
@@ -420,10 +483,12 @@ def load_dataset3_model() -> tf.keras.Model:
             "Could not determine Dataset 3 model output size."
         )
 
-    if output_count != len(DATASET3_CLASSES):
+    expected = len(facial_model_config()["classes"])
+
+    if output_count != expected:
         raise ValueError(
-            "Dataset 3 EfficientNetB0 model output mismatch: "
-            f"expected {len(DATASET3_CLASSES)}, "
+            "Facial model output mismatch: "
+            f"expected {expected}, "
             f"got {output_count}."
         )
 
@@ -469,8 +534,9 @@ def preprocess_image(image_path: str | Path) -> np.ndarray:
         with Image.open(path) as image:
             image = image.convert("RGB")
 
+            size = facial_model_config()["image_size"]
             image = image.resize(
-                IMAGE_SIZE,
+                (size, size),
                 Image.Resampling.BILINEAR,
             )
 
@@ -489,7 +555,9 @@ def preprocess_image(image_path: str | Path) -> np.ndarray:
             "The uploaded image could not be opened."
         ) from exc
 
-    if image_array.shape != (224, 224, 3):
+    size = facial_model_config()["image_size"]
+
+    if image_array.shape != (size, size, 3):
         raise ValueError(
             "The image could not be converted to the required "
             "RGB format."
@@ -555,7 +623,10 @@ def predict_dataset3(
 
     flat_prediction = prediction_array.reshape(-1)
 
-    if len(flat_prediction) < len(DATASET3_CLASSES):
+    config = facial_model_config()
+    classes = config["classes"]
+
+    if len(flat_prediction) < len(classes):
         raise ValueError(
             "Dataset 3 EfficientNetB0 model returned fewer outputs "
             "than expected."
@@ -564,13 +635,13 @@ def predict_dataset3(
     probabilities: dict[str, dict[str, float | bool]] = {}
     detected_conditions: list[str] = []
 
-    for index, condition in enumerate(DATASET3_CLASSES):
+    for index, condition in enumerate(classes):
 
         probability = _clip_probability(
             flat_prediction[index]
         )
 
-        threshold = DATASET3_THRESHOLDS[condition]
+        threshold = config["thresholds"][condition]
 
         detected = probability >= threshold
 
@@ -606,7 +677,7 @@ def get_detected_conditions(
 
     for condition in dataset3_result.get("conditions", []):
 
-        if condition not in DATASET3_CLASSES:
+        if condition not in facial_model_config()["classes"]:
             continue
 
         if condition == "Normal Skin":
@@ -649,7 +720,7 @@ def _dataset3_severity_evidence(
         {},
     )
 
-    for condition in DATASET3_CLASSES:
+    for condition in facial_model_config()["classes"]:
 
         if condition == "Normal Skin":
             continue
@@ -800,7 +871,7 @@ def calculate_confidence(
     detected_probabilities: list[float] = []
     all_probabilities: list[float] = []
 
-    for condition in DATASET3_CLASSES:
+    for condition in facial_model_config()["classes"]:
 
         item = probabilities.get(condition)
 
@@ -982,7 +1053,7 @@ def analyze_skin_image(
         return {
             "status": "uncertain",
             "conditions": [],
-            "model_version": settings.facial_model_version,
+            "model_version": facial_model_config()["model_version"],
             "_internal": {"dataset3": dataset3_result},
         }
 
@@ -1019,7 +1090,7 @@ def analyze_skin_image(
 
     result = {
         "status": "completed",
-        "model_version": settings.facial_model_version,
+        "model_version": facial_model_config()["model_version"],
         "conditions": user_conditions,
         "recommendations": recommendations,
         "confidence_score": confidence_score,

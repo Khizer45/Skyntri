@@ -15,7 +15,7 @@ from app.schemas import (
     SkinAnalysisCreate,
     SkinAnalysisOut,
 )
-from app.services import rate_limit
+from app.services import disease_screening, rate_limit
 from app.services.image_gate import RETAKE_GUIDANCE, assess_image
 from app.services.skin_analysis import InferenceBusyError, analyze_skin_image
 from app.services.uploads import delete_upload, resolve_upload_url, save_upload
@@ -129,9 +129,43 @@ TRACK_LABELS = {
     TRACK_DISEASE: "Skin disease screening support",
 }
 
-# Model B is not released: no disease class has passed the dataset,
-# external-validation and dermatology-review gates (SEC-MED-003).
-RELEASED_TRACKS = {TRACK_FACIAL}
+TRACK_DESCRIPTIONS = {
+    TRACK_FACIAL: (
+        "Acne, blackheads, dark spots, pores, wrinkles, oiliness, dryness, "
+        "redness and eye bags on the face."
+    ),
+    TRACK_DISEASE: (
+        "Patterns such as eczema, psoriasis, fungal infection or hives on the "
+        "face or body, and a referral flag for lesions that need a doctor."
+    ),
+}
+
+
+def available_tracks() -> set[str]:
+    """
+    Model A is always available. Model B only when its model files are
+    installed AND DISEASE_SCREENING_ENABLED=true, which must be set only
+    after dataset, external-validation and dermatology review (SEC-MED-003).
+    """
+    tracks = {TRACK_FACIAL}
+    if disease_screening.is_available():
+        tracks.add(TRACK_DISEASE)
+    return tracks
+
+
+@router.get("/tracks")
+def list_tracks():
+    """Public description of the analysis tracks and whether each is available."""
+    available = available_tracks()
+    return [
+        {
+            "id": track,
+            "label": TRACK_LABELS[track],
+            "description": TRACK_DESCRIPTIONS[track],
+            "available": track in available,
+        }
+        for track in (TRACK_FACIAL, TRACK_DISEASE)
+    ]
 
 
 def _abstain(detail: dict) -> HTTPException:
@@ -178,7 +212,7 @@ def analyze_uploaded_skin_image(
             detail="Unknown analysis type.",
         )
 
-    if track not in RELEASED_TRACKS:
+    if track not in available_tracks():
         raise _abstain(
             {
                 "code": "track_not_available",
@@ -239,7 +273,10 @@ def analyze_uploaded_skin_image(
         raise _abstain(gate.public_detail())
 
     try:
-        result = analyze_skin_image(image_path)
+        if track == TRACK_DISEASE:
+            result = disease_screening.screen_image(image_path)
+        else:
+            result = analyze_skin_image(image_path)
     except InferenceBusyError as exc:
         delete_upload(image_url)
         raise HTTPException(
@@ -303,11 +340,12 @@ def analyze_uploaded_skin_image(
         "skin patterns, not a medical diagnosis."
     )
 
-    predicted_condition = (
-        ", ".join(conditions)
-        if conditions
-        else "No specific visible condition detected"
-    )
+    if conditions:
+        predicted_condition = ", ".join(conditions)
+    elif track == TRACK_DISEASE:
+        predicted_condition = "No supported disease pattern recognised (not a medical all-clear)"
+    else:
+        predicted_condition = "No specific visible condition detected"
 
     model_version = str(result.get("model_version") or settings.facial_model_version)
 
@@ -358,6 +396,8 @@ def analyze_uploaded_skin_image(
         analysis_track_label=TRACK_LABELS[track],
         model_version=model_version,
         gate_version=gate.gate_version,
+        referral=bool(result.get("referral", False)),
+        summary=result.get("summary"),
     )
 
 

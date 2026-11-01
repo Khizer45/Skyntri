@@ -1,5 +1,6 @@
 import { AlertTriangle, Camera, CheckCircle2, Info, ScanFace, Sparkles, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import Button from '../components/Button.jsx'
 import Card from '../components/Card.jsx'
 import ImageUploader from '../components/ImageUploader.jsx'
@@ -16,7 +17,12 @@ export default function SkinAnalysis() {
   const [error, setError] = useState('')
   const [abstention, setAbstention] = useState(null)
   const [track, setTrack] = useState('facial_concerns')
+  const [tracks, setTracks] = useState(api.ANALYSIS_TRACKS)
   const { showToast } = useToast()
+
+  useEffect(() => {
+    api.getAnalysisTracks().then(setTracks)
+  }, [])
 
   const handleAnalyze = async () => {
     if (!file) return
@@ -62,7 +68,7 @@ export default function SkinAnalysis() {
               What would you like to analyze?
             </legend>
             <div className="space-y-2">
-              {api.ANALYSIS_TRACKS.map((option) => (
+              {tracks.map((option) => (
                 <label
                   key={option.id}
                   className={`flex gap-3 rounded-lg border p-3 text-sm ${
@@ -187,6 +193,13 @@ export default function SkinAnalysis() {
             </p>
           )}
 
+          {!analyzing && result?.referral && (
+            <div className="mb-3 flex gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800 dark:border-red-900 dark:bg-red-900/20 dark:text-red-200">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <p>{result.summary}</p>
+            </div>
+          )}
+
           {!analyzing && result && (
             <PredictionCard
               conditions={result.conditions}
@@ -242,6 +255,15 @@ export default function SkinAnalysis() {
                 icon={<XCircle className="h-4 w-4" />}
               />
             </div>
+
+            {result.track === 'facial_concerns' && (
+              <Link
+                to="/shop"
+                className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+              >
+                <Sparkles className="h-4 w-4" /> See affordable products with these ingredients
+              </Link>
+            )}
 
             {result.disclaimer && (
               <div className="mt-5 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-200">

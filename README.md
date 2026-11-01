@@ -41,4 +41,10 @@ Tests: `cd backend && pytest -q`. See [backend/README.md](backend/README.md) and
 * **Two analysis tracks:** "Facial skin concerns" (Model A) is live. "Skin disease screening support" (Model B) is shown but not available until clinically reviewed and validated.
 * **Deployment:** Dockerfile with Tesseract, CI workflow, runbook, environment reference.
 
+## v1.2 additions
+
+* **ML notebooks** in [`ml/`](ml/README.md): Colab notebooks for Model A (facial concerns) and Model B (skin disease screening). They cover dataset loading, cleaning, augmentation, EfficientNet training, evaluation metrics, export and prediction. They are not trained yet. See [ml/README.md](ml/README.md#4-where-to-put-the-trained-model-backend) for where the trained files go.
+* **Model B plug-in:** the backend loads the exported disease model when `DISEASE_SCREENING_ENABLED=true`. Referral comes first, it abstains when unsure, and it never gives an all-clear.
+* **Shop:** search products by the ingredients they contain or avoid, get suggestions from your latest facial analysis, then use the cart and cash-on-delivery orders. Admins create, edit and delete products (with images) and manage orders.
+
 Open items before a public launch are listed in [docs/01_Security_Audit_Report.md](docs/01_Security_Audit_Report.md#still-blocking-a-public-launch).

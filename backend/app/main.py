@@ -26,6 +26,7 @@ from app.routers import (
     progress,
     reports,
     scans,
+    shop,
 )
 from app.services.ingredient_seed import seed_ingredients
 
@@ -204,6 +205,7 @@ app.include_router(history.router)
 
 app.include_router(chat.router)
 app.include_router(files.router)
+app.include_router(shop.router)
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +249,19 @@ def readiness():
         "loaded": model_loaded(),
         "version": settings.facial_model_version,
     }
+
+    from app.services import disease_screening
+
+    if settings.disease_screening_enabled:
+        files_ok = disease_screening.model_files_present()
+        checks["disease_model"] = {
+            "ok": files_ok,
+            "enabled": True,
+            "artifact_present": files_ok,
+            "loaded": disease_screening.model_loaded(),
+        }
+    else:
+        checks["disease_model"] = {"ok": True, "enabled": False}
 
     checks["input_gate"] = {
         "ok": True,

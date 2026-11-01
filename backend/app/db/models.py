@@ -141,6 +141,15 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+    # Shop data is removed with the account (SEC-DATA-005).
+    cart_items: Mapped[list["CartItem"]] = relationship(
+        cascade="all, delete-orphan",
+    )
+
+    orders: Mapped[list["Order"]] = relationship(
+        cascade="all, delete-orphan",
+    )
+
 
 # ============================================================
 # Password reset token
@@ -844,3 +853,114 @@ class RateLimitEvent(Base):
             "created_at",
         ),
     )
+
+
+# ============================================================
+# Shop: products, cart, orders
+# ============================================================
+
+class Product(Base):
+    """
+    Skincare product managed by administrators.
+
+    Prices are entered by an admin together with their source and the date
+    they were checked (SEC-PROD-001/002). Nothing is invented by the app.
+    """
+
+    __tablename__ = "products"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    brand: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    size: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # JSON-encoded list of ingredient names as written on the label (INCI order)
+    ingredients_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    # JSON-encoded list of canonical comparison keys (computed on save)
+    ingredient_keys_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+    skin_types_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    concerns_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(String, nullable=False, default="PKR")
+    price_source: Mapped[str | None] = mapped_column(String, nullable=True)
+    price_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    stock: Mapped[int] = mapped_column(default=0, nullable=False)
+    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_sponsored: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
+class CartItem(Base):
+    __tablename__ = "cart_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False, index=True)
+    product_id: Mapped[str] = mapped_column(String, ForeignKey("products.id"), nullable=False, index=True)
+    quantity: Mapped[int] = mapped_column(default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    product: Mapped["Product"] = relationship()
+
+    __table_args__ = (
+        Index("ux_cart_user_product", "user_id", "product_id", unique=True),
+    )
+
+
+class Order(Base):
+    __tablename__ = "orders"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False, index=True)
+
+    # pending -> confirmed -> shipped -> delivered ; pending/confirmed -> cancelled
+    status: Mapped[str] = mapped_column(String, default="pending", nullable=False, index=True)
+    payment_method: Mapped[str] = mapped_column(String, default="cash_on_delivery", nullable=False)
+
+    subtotal: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(String, nullable=False, default="PKR")
+
+    shipping_name: Mapped[str] = mapped_column(String, nullable=False)
+    shipping_phone: Mapped[str] = mapped_column(String, nullable=False)
+    shipping_address: Mapped[str] = mapped_column(Text, nullable=False)
+    shipping_city: Mapped[str] = mapped_column(String, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    items: Mapped[list["OrderItem"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_orders_user_created", "user_id", "created_at"),
+    )
+
+
+class OrderItem(Base):
+    """Snapshot of the product at purchase time (survives product edits/deletes)."""
+
+    __tablename__ = "order_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    order_id: Mapped[str] = mapped_column(String, ForeignKey("orders.id"), nullable=False, index=True)
+    product_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    product_name: Mapped[str] = mapped_column(String, nullable=False)
+    brand: Mapped[str] = mapped_column(String, nullable=False)
+    unit_price: Mapped[float] = mapped_column(Float, nullable=False)
+    quantity: Mapped[int] = mapped_column(nullable=False)
+    line_total: Mapped[float] = mapped_column(Float, nullable=False)
+
+    order: Mapped["Order"] = relationship(back_populates="items")

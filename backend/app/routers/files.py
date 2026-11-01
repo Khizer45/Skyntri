@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
 from app.core.security import verify_file_signature
-from app.services.uploads import resolve_upload_url
+from app.services.uploads import PUBLIC_SUBFOLDERS, resolve_upload_url
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -25,7 +25,20 @@ _MEDIA_TYPES = {
     ".webp": "image/webp",
 }
 
-_SERVABLE_FOLDERS = {"analyses", "avatars", "progress", "ingredient_scans", "ingredients_scans"}
+_SERVABLE_FOLDERS = {"analyses", "avatars", "progress", "ingredient_scans", "ingredients_scans", "products"}
+
+
+@router.get("/products/{filename}")
+def get_product_image(filename: str):
+    """Product photos are public catalogue content (no signature needed)."""
+    path = resolve_upload_url(f"/uploads/products/{filename}")
+    if path is None or not path.is_file() or path.suffix.lower() not in _MEDIA_TYPES:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
+    return FileResponse(
+        path=str(path),
+        media_type=_MEDIA_TYPES[path.suffix.lower()],
+        headers={"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/{folder}/{filename}")
@@ -37,7 +50,7 @@ def get_private_file(
 ):
     not_found = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
 
-    if folder not in _SERVABLE_FOLDERS:
+    if folder not in _SERVABLE_FOLDERS or folder in PUBLIC_SUBFOLDERS:
         raise not_found
 
     relative = f"{folder}/{filename}"

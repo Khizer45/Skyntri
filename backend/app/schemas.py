@@ -279,6 +279,9 @@ class SkinAnalysisAnalyzeOut(BaseModel):
     model_version: str | None = None
     gate_version: str | None = None
     status: str = "completed"
+    # Model B only: True when a doctor's assessment is recommended.
+    referral: bool = False
+    summary: str | None = None
 
     @field_serializer("image_url")
     def _sign_image(self, value: str) -> str:

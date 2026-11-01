@@ -1,5 +1,9 @@
 import { Route, Routes } from 'react-router-dom'
+import AdminRoute from './components/AdminRoute.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import AdminOrders from './pages/AdminOrders.jsx'
+import AdminProducts from './pages/AdminProducts.jsx'
+import Cart from './pages/Cart.jsx'
 import AIAssistant from './pages/AIAssistant.jsx'
 import Contact from './pages/Contact.jsx'
 import Dashboard from './pages/Dashboard.jsx'
@@ -9,11 +13,14 @@ import IngredientScanner from './pages/IngredientScanner.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import Login from './pages/Login.jsx'
 import NotFound from './pages/NotFound.jsx'
+import Orders from './pages/Orders.jsx'
+import ProductDetail from './pages/ProductDetail.jsx'
 import Profile from './pages/Profile.jsx'
 import ProgressChecker from './pages/ProgressChecker.jsx'
 import Reports from './pages/Reports.jsx'
 import ResetPassword from './pages/ResetPassword.jsx'
 import Settings from './pages/Settings.jsx'
+import Shop from './pages/Shop.jsx'
 import Signup from './pages/Signup.jsx'
 import SkinAnalysis from './pages/SkinAnalysis.jsx'
 
@@ -119,6 +126,16 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
+      {/* Shop */}
+      <Route path="/shop" element={<ProtectedRoute><Shop /></ProtectedRoute>} />
+      <Route path="/shop/:productId" element={<ProtectedRoute><ProductDetail /></ProtectedRoute>} />
+      <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
+      <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+
+      {/* Administration (server also enforces the admin role) */}
+      <Route path="/admin/products" element={<AdminRoute><AdminProducts /></AdminRoute>} />
+      <Route path="/admin/orders" element={<AdminRoute><AdminOrders /></AdminRoute>} />
 
       {/* 404 */}
       <Route path="*" element={<NotFound />} />

@@ -49,7 +49,12 @@ ALLOWED_SUBFOLDERS = {
     "ingredient_scans",
     "ingredients_scans",
     "reports",
+    "products",
 }
+
+# Folders whose files are public catalogue content (product photos), served
+# without a signature. User photos are NEVER placed here.
+PUBLIC_SUBFOLDERS = {"products"}
 
 INTERNAL_PREFIX = "/uploads/"
 PUBLIC_FILES_PREFIX = "/files/"
@@ -254,6 +259,10 @@ def signed_url(image_url: str | None) -> str | None:
         return image_url
 
     relative = image_url[len(INTERNAL_PREFIX):]
+
+    if relative.split("/", 1)[0] in PUBLIC_SUBFOLDERS:
+        return f"{PUBLIC_FILES_PREFIX}{quote(relative)}"
+
     expires, signature = sign_file_path(relative)
 
     return (

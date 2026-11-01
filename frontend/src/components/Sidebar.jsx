@@ -13,6 +13,11 @@ import {
   Sun,
   X,
   Sparkles,
+  ShoppingBag,
+  ShoppingCart,
+  Package,
+  Boxes,
+  ClipboardList,
 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -24,10 +29,18 @@ const links = [
   { to: '/ingredient-scanner', label: 'Ingredient Scanner', icon: FlaskConical },
   { to: '/progress-checker', label: 'Progress Checker', icon: TrendingUp },
   { to: '/assistant', label: 'AI Skin Assistant', icon: MessageCircle },
+  { to: '/shop', label: 'Shop', icon: ShoppingBag },
+  { to: '/cart', label: 'Cart', icon: ShoppingCart },
+  { to: '/orders', label: 'My Orders', icon: Package },
   { to: '/history', label: 'History', icon: History },
   { to: '/reports', label: 'Reports', icon: FileText },
   { to: '/profile', label: 'Profile', icon: User },
   { to: '/settings', label: 'Settings', icon: Settings },
+]
+
+const adminLinks = [
+  { to: '/admin/products', label: 'Manage Products', icon: Boxes },
+  { to: '/admin/orders', label: 'Manage Orders', icon: ClipboardList },
 ]
 
 export default function Sidebar({ open, onClose }) {
@@ -61,7 +74,7 @@ export default function Sidebar({ open, onClose }) {
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-2">
-          {links.map(({ to, label, icon: Icon }) => (
+          {[...links, ...(user?.role === 'admin' ? adminLinks : [])].map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}

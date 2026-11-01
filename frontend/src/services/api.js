@@ -189,13 +189,17 @@ function mapAnalysis(data) {
 
     disclaimer: data?.disclaimer || '',
 
+    referral: Boolean(data?.referral),
+    summary: data?.summary || '',
     track: data?.analysis_track || 'facial_concerns',
     trackLabel: data?.analysis_track_label || 'Facial skin concerns',
     modelVersion: data?.model_version || '',
 
-    explanation: conditions.length
-      ? `The analysis identified these visible skin patterns: ${conditions.join(', ')}.`
-      : 'No specific visible skin problem was identified from this image.',
+    explanation: data?.summary
+      ? data.summary
+      : conditions.length
+        ? `The analysis identified these visible skin patterns: ${conditions.join(', ')}.`
+        : 'No specific visible skin problem was identified from this image.',
 
     recommendations: {
       skincare: Array.isArray(recommendations.skincare)
@@ -804,5 +808,161 @@ export async function sendContactMessage(payload) {
   return request('/contact', {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+// ---------------------------------------------------------------------------
+// Analysis tracks (Model A / Model B availability comes from the backend)
+// ---------------------------------------------------------------------------
+
+export async function getAnalysisTracks() {
+  try {
+    const data = await request('/analyses/tracks', { method: 'GET' })
+    return Array.isArray(data) ? data : ANALYSIS_TRACKS
+  } catch {
+    return ANALYSIS_TRACKS
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shop
+// ---------------------------------------------------------------------------
+
+export function mapProduct(product) {
+  if (!product) return null
+  return {
+    ...product,
+    imageUrl: assetUrl(product.image_url),
+    priceCheckedAt: product.price_checked_at
+      ? new Date(product.price_checked_at).toLocaleDateString()
+      : null,
+  }
+}
+
+function toQuery(params = {}) {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '' && value !== false) {
+      query.set(key, value)
+    }
+  })
+  const text = query.toString()
+  return text ? `?${text}` : ''
+}
+
+export async function getProductMeta() {
+  return request('/products/meta', { method: 'GET' })
+}
+
+export async function searchProducts(params = {}) {
+  const data = await request(`/products${toQuery(params)}`, { method: 'GET' })
+  return { ...data, items: (data?.items || []).map(mapProduct) }
+}
+
+export async function getProduct(productId) {
+  return mapProduct(
+    await request(`/products/${encodeURIComponent(productId)}`, { method: 'GET' })
+  )
+}
+
+export async function getRecommendedProducts() {
+  const data = await request('/products/recommended', { method: 'GET' })
+  return { ...data, items: (data?.items || []).map(mapProduct) }
+}
+
+function mapCart(cart) {
+  return {
+    ...cart,
+    items: (cart?.items || []).map((item) => ({ ...item, product: mapProduct(item.product) })),
+  }
+}
+
+export async function getCart() {
+  return mapCart(await request('/cart', { method: 'GET' }))
+}
+
+export async function addToCart(productId, quantity = 1) {
+  return mapCart(
+    await request('/cart/items', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId, quantity }),
+    })
+  )
+}
+
+export async function updateCartItem(itemId, quantity) {
+  return mapCart(
+    await request(`/cart/items/${encodeURIComponent(itemId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quantity }),
+    })
+  )
+}
+
+export async function removeCartItem(itemId) {
+  return mapCart(
+    await request(`/cart/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' })
+  )
+}
+
+export async function placeOrder(shipping) {
+  return request('/orders', { method: 'POST', body: JSON.stringify(shipping) })
+}
+
+export async function getOrders() {
+  return request('/orders', { method: 'GET' })
+}
+
+export async function cancelOrder(orderId) {
+  return request(`/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST' })
+}
+
+// ---------------------------------------------------------------------------
+// Shop administration (admin role required on the server)
+// ---------------------------------------------------------------------------
+
+export async function adminListProducts() {
+  const data = await request('/admin/products', { method: 'GET' })
+  return Array.isArray(data) ? data.map(mapProduct) : []
+}
+
+export async function adminCreateProduct(payload) {
+  return mapProduct(
+    await request('/admin/products', { method: 'POST', body: JSON.stringify(payload) })
+  )
+}
+
+export async function adminUpdateProduct(productId, payload) {
+  return mapProduct(
+    await request(`/admin/products/${encodeURIComponent(productId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+  )
+}
+
+export async function adminDeleteProduct(productId) {
+  await request(`/admin/products/${encodeURIComponent(productId)}`, { method: 'DELETE' })
+  return true
+}
+
+export async function adminUploadProductImage(productId, file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return mapProduct(
+    await request(`/admin/products/${encodeURIComponent(productId)}/image`, {
+      method: 'POST',
+      body: formData,
+    })
+  )
+}
+
+export async function adminListOrders(status = '') {
+  return request(`/admin/orders${toQuery({ status })}`, { method: 'GET' })
+}
+
+export async function adminUpdateOrderStatus(orderId, status) {
+  return request(`/admin/orders/${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
   })
 }

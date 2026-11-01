@@ -13,6 +13,7 @@
 | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) | Docker deployment, backup/restore, release and rollback |
 | [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) | Every backend setting |
 | [TEST_PLAN_AND_RELEASE_CHECKLIST.md](TEST_PLAN_AND_RELEASE_CHECKLIST.md) | Automated tests, manual checks, release gate |
+| [../ml/README.md](../ml/README.md) | Colab training notebooks, dataset download links, where to put trained models |
 
 Architecture and data flow (current):
 

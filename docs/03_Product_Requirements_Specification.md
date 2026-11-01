@@ -145,12 +145,12 @@ Support: uploading/processing; unsupported file; too large/corrupt; poor quality
 | FR-02 Secure image upload | Done (decode-based validation, private storage, signed URLs) |
 | FR-03 Skin eligibility/OOD | Done with an interim heuristic gate and model-uncertainty abstention; trained gate still required |
 | FR-04 Model A facial concerns | Live behind the gate; results labelled "Facial skin concerns · AI estimate" |
-| FR-05 Model B disease screening | **Not released.** Shown in the UI as "Coming later"; API returns `track_not_available` |
+| FR-05 Model B disease screening | Code path, safe result logic and training notebook ready. **Switched off** until a trained model is installed and `DISEASE_SCREENING_ENABLED=true` after clinical review |
 | FR-06 Results/history | Track, model version and gate version stored for new analyses; old records kept and migrated as "legacy" |
 | FR-07 Ingredient scanner | Preserved; rate-limited; OCR now installed in the container image |
 | FR-08 Progress comparison | Preserved; "approximate visual comparison" note and photo-consistency guidance added |
 | FR-09 Chat | Preserved; rate-limited |
 | FR-10 Reports | Owner-checked download, sanitised filename, `no-store` caching |
 | FR-11 Contact | Public submission; admin-only list/detail/delete |
-| FR-12 Affordable products | **Not started.** Blocked by the release gate and by the need for verified product, price and source data (nothing may be invented) |
-| FR-13 Administration | Server-side admin role; management limited to contact messages so far |
+| FR-12 Affordable products | Built: ingredient-based search (wanted/avoided ingredients, budget, skin type, category), recommendations from the latest facial analysis, cart, cash-on-delivery orders. Admins add products with price **source** and **checked date**; stale prices are labelled; sponsored items labelled, not boosted; no products for disease results. No catalogue data is shipped: the admin enters real products |
+| FR-13 Administration | Server-side admin role; contact messages, product CRUD with images, order status management |

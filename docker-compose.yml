@@ -1,0 +1,55 @@
+# Run all of Skyntri with one command:
+#     docker compose up --build
+# Frontend: http://localhost:5173    API: http://localhost:8000
+#
+# Optional settings go in a ".env" file next to this file (see .env.docker.example).
+
+services:
+  backend:
+    build: ./backend
+    container_name: skyntri-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # "development" keeps local conveniences (API docs at /docs, reset links in the log).
+      # Use "production" + a strong SECRET_KEY + HTTPS origins for a real deployment.
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SECRET_KEY: ${SECRET_KEY:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      DATABASE_URL: sqlite:////data/db/skyntri.db
+      UPLOAD_DIR: /data/uploads
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      MODEL_WARMUP: "true"
+      # Trained models: put the files in backend/models/ and set these in .env
+      DATASET3_MODEL_PATH: ${DATASET3_MODEL_PATH:-models/EfficientNetB0_weighted_focal_finetuned_best.keras}
+      FACIAL_MODEL_METADATA_PATH: ${FACIAL_MODEL_METADATA_PATH:-models/facial_concerns_metadata.json}
+      DISEASE_SCREENING_ENABLED: ${DISEASE_SCREENING_ENABLED:-false}
+      DISEASE_MODEL_PATH: ${DISEASE_MODEL_PATH:-models/skin_disease_efficientnet.keras}
+      DISEASE_MODEL_METADATA_PATH: ${DISEASE_MODEL_METADATA_PATH:-models/skin_disease_metadata.json}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    volumes:
+      # Database + uploaded images survive restarts
+      - skyntri-data:/data
+      # New trained models are picked up without rebuilding the image
+      - ./backend/models:/app/models:ro
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    container_name: skyntri-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  skyntri-data:

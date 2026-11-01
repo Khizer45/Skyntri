@@ -28,13 +28,13 @@ COPY docker-entrypoint.sh ./
 
 # Non-root user; private upload volume.
 RUN useradd --create-home --uid 10001 skyntri \
-    && mkdir -p /data/uploads \
+    && mkdir -p /data/uploads /data/db \
     && chown -R skyntri:skyntri /data /app \
     && chmod +x docker-entrypoint.sh
 
 USER skyntri
 
-VOLUME ["/data/uploads"]
+VOLUME ["/data"]
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \

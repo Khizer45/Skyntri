@@ -11,6 +11,21 @@ frontend/   React/Vite single-page app
 docs/       security audit, requirements, runbook, model card, test plan
 ```
 
+## Run with Docker (easiest: nothing else to install)
+
+Install **Docker Desktop**, then in the project folder:
+
+```bash
+docker compose up --build
+```
+
+* App: http://localhost:5173 · API: http://localhost:8000 (docs at `/docs`)
+* The first build downloads TensorFlow, so it takes a while. Later starts are fast: `docker compose up`
+* Optional settings: copy `.env.docker.example` to `.env` and set `ADMIN_EMAILS` (your e-mail becomes admin) and `SECRET_KEY` (keeps you logged in across restarts).
+* The database and uploaded images live in the Docker volume `skyntri-data`, so they survive restarts.
+* **Trained models:** copy them into `backend/models/`, set the paths in `.env`, then `docker compose restart backend`. No rebuild is needed because the folder is mounted.
+* Stop: `docker compose down`. Delete all data too: `docker compose down -v`.
+
 ## Quick start (development)
 
 Backend (Python 3.13 recommended; install Tesseract for the ingredient scanner):

@@ -30,7 +30,7 @@ Do not assume a free hosting tier can run TensorFlow; measure first. Add workers
 
 ## Backups and restore
 
-* **Database:** enable automated daily backups and point-in-time recovery on the managed PostgreSQL. Manual: `pg_dump --format=custom "$DATABASE_URL" > skyntri-$(date +%F).dump`.
+* **Database:** enable automated daily backups and point-in-time recovery on the managed PostgreSQL. Manual: `pg_dump --format=custom "$DATABASE_URL" > skyntri-$(date +%F).dump`. With Docker Compose: `docker compose exec db pg_dump -U skyntri --format=custom skyntri > skyntri-$(date +%F).dump`.
 * **Files:** snapshot the `/data/uploads` volume daily (or sync it to a private, encrypted bucket).
 * **Restore drill (do this before launch and quarterly):**
   1. `pg_restore --clean --no-owner -d "$RESTORE_DATABASE_URL" skyntri-YYYY-MM-DD.dump`

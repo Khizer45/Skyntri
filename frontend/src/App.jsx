@@ -1,8 +1,10 @@
 import { Route, Routes } from 'react-router-dom'
 import AdminRoute from './components/AdminRoute.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import AdminDashboard from './pages/AdminDashboard.jsx'
 import AdminOrders from './pages/AdminOrders.jsx'
 import AdminProducts from './pages/AdminProducts.jsx'
+import AdminUsers from './pages/AdminUsers.jsx'
 import Cart from './pages/Cart.jsx'
 import AIAssistant from './pages/AIAssistant.jsx'
 import Contact from './pages/Contact.jsx'
@@ -134,7 +136,9 @@ export default function App() {
       <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
 
       {/* Administration (server also enforces the admin role) */}
+      <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
       <Route path="/admin/products" element={<AdminRoute><AdminProducts /></AdminRoute>} />
+      <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
       <Route path="/admin/orders" element={<AdminRoute><AdminOrders /></AdminRoute>} />
 
       {/* 404 */}

@@ -54,6 +54,8 @@ def test_skin_analysis_integration(tmp_path, monkeypatch):
     # but this test stores the file inside the temporary
     # test directory instead of the real uploads folder.
     # ---------------------------------------------------------
+    monkeypatch.setattr("app.routers.analyses.model_artifact_available", lambda: True)
+
     # Private uploads go to a temporary directory for this test.
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
 

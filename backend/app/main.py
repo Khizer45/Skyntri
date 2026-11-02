@@ -15,6 +15,7 @@ from app.core.config import settings, validate_for_startup
 from app.core.logging_config import configure_logging
 from app.db.database import SessionLocal, engine
 from app.routers import (
+    admin,
     analyses,
     auth,
     chat,
@@ -36,6 +37,15 @@ logger = logging.getLogger("skyntri")
 # Fail fast on unsafe production configuration (SK-03 / SEC-AUTH-008).
 for _warning in validate_for_startup(settings):
     logger.warning(_warning)
+
+logger.info(
+    "admin_bootstrap",
+    extra={
+        "event": "admin_bootstrap",
+        "admin_emails_configured": len(settings.admin_email_list),
+        "hint": "Users whose e-mail is in ADMIN_EMAILS become admin when they sign up or log in.",
+    },
+)
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +216,7 @@ app.include_router(history.router)
 app.include_router(chat.router)
 app.include_router(files.router)
 app.include_router(shop.router)
+app.include_router(admin.router)
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +232,15 @@ def health_check():
 @app.get("/health/live", tags=["health"])
 def liveness():
     return {"status": "ok"}
+
+
+def _facial_version() -> str:
+    try:
+        from app.services.skin_analysis import facial_model_config
+
+        return facial_model_config()["model_version"]
+    except Exception:
+        return settings.facial_model_version
 
 
 @app.get("/health/ready", tags=["health"])
@@ -247,7 +267,7 @@ def readiness():
         "ok": artifact and (model_loaded() or not settings.model_warmup),
         "artifact_present": artifact,
         "loaded": model_loaded(),
-        "version": settings.facial_model_version,
+        "version": _facial_version(),
     }
 
     from app.services import disease_screening

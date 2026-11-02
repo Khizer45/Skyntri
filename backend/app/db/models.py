@@ -925,6 +925,10 @@ class Order(Base):
     # pending -> confirmed -> shipped -> delivered ; pending/confirmed -> cancelled
     status: Mapped[str] = mapped_column(String, default="pending", nullable=False, index=True)
     payment_method: Mapped[str] = mapped_column(String, default="cash_on_delivery", nullable=False)
+    # unpaid -> paid (cash collected) -> refunded
+    payment_status: Mapped[str] = mapped_column(
+        String, default="unpaid", server_default="unpaid", nullable=False, index=True
+    )
 
     subtotal: Mapped[float] = mapped_column(Float, nullable=False)
     currency: Mapped[str] = mapped_column(String, nullable=False, default="PKR")

@@ -1,3 +1,5 @@
+import { publishCartCount } from './cartEvents.js'
+
 // ---------------------------------------------------------------------------
 // Skyntri API service layer
 // ---------------------------------------------------------------------------
@@ -432,7 +434,7 @@ export const ANALYSIS_TRACKS = [
     label: 'Facial skin concerns',
     description:
       'Acne, blackheads, dark spots, pores, wrinkles, oiliness, dryness, redness and eye bags on the face.',
-    available: true,
+    available: false,
   },
   {
     id: 'disease_screening',
@@ -870,6 +872,7 @@ export async function getRecommendedProducts() {
 }
 
 function mapCart(cart) {
+  publishCartCount(cart?.item_count || 0)
   return {
     ...cart,
     items: (cart?.items || []).map((item) => ({ ...item, product: mapProduct(item.product) })),
@@ -905,7 +908,9 @@ export async function removeCartItem(itemId) {
 }
 
 export async function placeOrder(shipping) {
-  return request('/orders', { method: 'POST', body: JSON.stringify(shipping) })
+  const order = await request('/orders', { method: 'POST', body: JSON.stringify(shipping) })
+  publishCartCount(0)
+  return order
 }
 
 export async function getOrders() {
@@ -964,5 +969,31 @@ export async function adminUpdateOrderStatus(orderId, status) {
   return request(`/admin/orders/${encodeURIComponent(orderId)}`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Admin panel
+// ---------------------------------------------------------------------------
+
+export async function adminStats() {
+  return request('/admin/stats', { method: 'GET' })
+}
+
+export async function adminListUsers(q = '') {
+  return request(`/admin/users${toQuery({ q })}`, { method: 'GET' })
+}
+
+export async function adminUpdateUser(userId, payload) {
+  return request(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function adminUpdatePayment(orderId, paymentStatus) {
+  return request(`/admin/orders/${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ payment_status: paymentStatus }),
   })
 }

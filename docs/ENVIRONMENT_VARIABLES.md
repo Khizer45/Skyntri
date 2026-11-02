@@ -10,8 +10,9 @@ Set these in the hosting platform's secret/config store, or in `backend/.env` fo
 | `ALGORITHM` | `HS256` | `HS256` | JWT HMAC algorithm |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | 15–60 | Access-token lifetime |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | `skyntri-api` / `skyntri-web` | keep | Validated claims |
-| `ADMIN_EMAILS` | *(empty)* | support staff | Comma-separated e-mails granted the admin role at register/login |
-| `DATABASE_URL` | `sqlite:///./skyntri.db` | `postgresql+psycopg://…` | SQLAlchemy URL |
+| `ADMIN_EMAILS` | *(empty)* | support staff | Comma-separated e-mails granted the admin role at register/login. Alternative: `python -m app.cli make-admin EMAIL` |
+| `DATABASE_URL` | `sqlite:///./skyntri.db` (Docker: the `db` PostgreSQL service) | `postgresql+psycopg://user:pass@host:5432/skyntri` | SQLAlchemy URL. PostgreSQL 16 is the supported production database |
+| `POSTGRES_PASSWORD` | `skyntri-local-password` | **required**, long random value | Docker Compose only: password of the bundled PostgreSQL service. Set it before the first `docker compose up`; changing it later needs the `skyntri-pg` volume to be reset |
 | `AUTO_MIGRATE` | `true` | `false` (entrypoint runs migrations) | Run Alembic at app start-up |
 | `CORS_ORIGINS` | localhost:5173 | `https://<frontend>` | Comma-separated; `*` refused in production |
 | `FRONTEND_URL` | `http://localhost:5173` | `https://<frontend>` | Used in reset links |
@@ -29,11 +30,11 @@ Set these in the hosting platform's secret/config store, or in `backend/.env` fo
 | `ANALYSIS_PER_HOUR`, `SCAN_PER_HOUR`, `PROGRESS_PER_HOUR`, `CHAT_PER_HOUR` | `30`, `40`, `20`, `60` | tune | Per user |
 | `MAX_CONCURRENT_INFERENCE` | `2` | 1–2 | Parallel TensorFlow inferences per worker |
 | `INFERENCE_QUEUE_TIMEOUT_SECONDS` | `20` | keep | Wait before returning 503 busy |
-| `DATASET3_MODEL_PATH` | `models/EfficientNetB0_…keras` | keep | Model A artifact |
-| `FACIAL_MODEL_VERSION` | `facial-concerns-effnetb0-v1` | update with the artifact | Stored with each analysis |
-| `SKIN_GATE_MODEL_PATH` | `models/skin_gate.keras` | trained gate | Optional; heuristic used if missing |
-| `SKIN_GATE_ACCEPT_THRESHOLD` / `SKIN_GATE_REJECT_THRESHOLD` | `0.80` / `0.40` | from validation | Trained-gate decision band |
-| `FACIAL_MODEL_METADATA_PATH` | `models/facial_concerns_metadata.json` | the exported JSON | Classes, thresholds, image size, version for a retrained Model A (built-in values if missing) |
+| `DATASET3_MODEL_PATH` | `models/facial_concerns_efficientnet.keras` | exported file | Model A artifact (notebook 01). If the file is missing, the facial track reports `model_not_installed` |
+| `FACIAL_MODEL_VERSION` | `facial-concerns-effnetb0-v1` | — | Fallback only; the version in `facial_concerns_metadata.json` is used when present |
+| `SKIN_GATE_MODEL_PATH` | `models/skin_gate.keras` | trained gate (notebook 03) | Optional; heuristic used if missing |
+| `SKIN_GATE_ACCEPT_THRESHOLD` / `SKIN_GATE_REJECT_THRESHOLD` | `0.80` / `0.40` | from validation | Trained-gate decision band; overridden by `skin_gate_metadata.json` when present |
+| `FACIAL_MODEL_METADATA_PATH` | `models/facial_concerns_metadata.json` | the exported JSON | Classes, output type, thresholds, abstain level, face crop, TTA, image size and version for Model A |
 | `DISEASE_SCREENING_ENABLED` | `false` | `true` **only after clinical review** | Turns on Model B |
 | `DISEASE_MODEL_PATH` / `DISEASE_MODEL_METADATA_PATH` | `models/skin_disease_efficientnet.keras` / `models/skin_disease_metadata.json` | exported files | Model B artifact and metadata |
 | `SHOP_CURRENCY` | `PKR` | keep | Default currency shown in the shop |

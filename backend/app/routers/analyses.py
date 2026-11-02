@@ -17,7 +17,7 @@ from app.schemas import (
 )
 from app.services import disease_screening, rate_limit
 from app.services.image_gate import RETAKE_GUIDANCE, assess_image
-from app.services.skin_analysis import InferenceBusyError, analyze_skin_image
+from app.services.skin_analysis import InferenceBusyError, analyze_skin_image, model_artifact_available
 from app.services.uploads import delete_upload, resolve_upload_url, save_upload
 
 logger = logging.getLogger("skyntri.analysis")
@@ -143,14 +143,25 @@ TRACK_DESCRIPTIONS = {
 
 def available_tracks() -> set[str]:
     """
-    Model A is always available. Model B only when its model files are
-    installed AND DISEASE_SCREENING_ENABLED=true, which must be set only
-    after dataset, external-validation and dermatology review (SEC-MED-003).
+    Model A is available when its trained file is installed in backend/models/.
+    Model B only when its model files are installed AND
+    DISEASE_SCREENING_ENABLED=true, which must be set only after dataset,
+    external-validation and dermatology review (SEC-MED-003).
     """
-    tracks = {TRACK_FACIAL}
+    tracks = set()
+    if model_artifact_available():
+        tracks.add(TRACK_FACIAL)
     if disease_screening.is_available():
         tracks.add(TRACK_DISEASE)
     return tracks
+
+
+def _unavailable_reason(track: str) -> str:
+    if track == TRACK_FACIAL:
+        return "The facial analysis model has not been installed yet."
+    if not disease_screening.model_files_present():
+        return "The skin disease model has not been installed yet."
+    return "Skin disease screening is switched off until it has been clinically reviewed."
 
 
 @router.get("/tracks")
@@ -163,6 +174,7 @@ def list_tracks():
             "label": TRACK_LABELS[track],
             "description": TRACK_DESCRIPTIONS[track],
             "available": track in available,
+            "reason": None if track in available else _unavailable_reason(track),
         }
         for track in (TRACK_FACIAL, TRACK_DISEASE)
     ]
@@ -210,6 +222,19 @@ def analyze_uploaded_skin_image(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unknown analysis type.",
+        )
+
+    if track == TRACK_FACIAL and not model_artifact_available():
+        raise _abstain(
+            {
+                "code": "model_not_installed",
+                "status": "unavailable",
+                "message": (
+                    "Facial skin analysis is not ready yet: the trained model has not "
+                    "been installed. Please try again later."
+                ),
+                "guidance": [],
+            }
         )
 
     if track not in available_tracks():

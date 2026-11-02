@@ -348,7 +348,8 @@ def _order_out(order: Order, include_email: bool = False, db: Session | None = N
         email = user.email if user else None
     return OrderOut(
         id=order.id, user_id=order.user_id, user_email=email, status=order.status,
-        payment_method=order.payment_method, subtotal=round(order.subtotal, 2), currency=order.currency,
+        payment_method=order.payment_method, payment_status=order.payment_status or "unpaid",
+        subtotal=round(order.subtotal, 2), currency=order.currency,
         shipping_name=order.shipping_name, shipping_phone=order.shipping_phone,
         shipping_address=order.shipping_address, shipping_city=order.shipping_city, notes=order.notes,
         created_at=order.created_at, updated_at=order.updated_at,
@@ -530,6 +531,14 @@ ALLOWED_TRANSITIONS = {
 }
 
 
+# Cash on delivery: mark "paid" when the cash is collected, "refunded" if returned.
+PAYMENT_TRANSITIONS = {
+    "unpaid": {"paid"},
+    "paid": {"refunded"},
+    "refunded": set(),
+}
+
+
 @router.get("/admin/orders", response_model=list[OrderOut])
 def admin_list_orders(
     status_filter: str | None = Query(default=None, alias="status"),
@@ -554,7 +563,11 @@ def admin_update_order(
     order = db.get(Order, order_id)
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
-    if payload.status != order.status:
+    if payload.status is None and payload.payment_status is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to update.")
+
+    changed = False
+    if payload.status is not None and payload.status != order.status:
         if payload.status not in ALLOWED_TRANSITIONS[order.status]:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -563,6 +576,19 @@ def admin_update_order(
         if payload.status == "cancelled":
             _restock(db, order)
         order.status = payload.status
+        changed = True
+
+    if payload.payment_status is not None and payload.payment_status != order.payment_status:
+        allowed = PAYMENT_TRANSITIONS.get(order.payment_status or "unpaid", set())
+        if payload.payment_status not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Payment cannot move from '{order.payment_status}' to '{payload.payment_status}'.",
+            )
+        order.payment_status = payload.payment_status
+        changed = True
+
+    if changed:
         order.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(order)

@@ -51,6 +51,9 @@ export default function Profile() {
             </p>
             <p className="text-xs text-neutral-400">
               Member since {user?.memberSince || '—'}
+              {user?.role === 'admin' && (
+                <span className="badge ml-2 bg-accent-100 text-accent-700 dark:bg-accent-900/40 dark:text-accent-200">Admin</span>
+              )}
             </p>
           </div>
         </div>

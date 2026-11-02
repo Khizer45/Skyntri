@@ -140,7 +140,7 @@ export default function AdminProducts() {
   }
 
   return (
-    <DashboardLayout title="Manage Products">
+    <DashboardLayout title="Products" subtitle="Add, edit and remove shop products">
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-neutral-600 dark:text-neutral-300">
           Add products with their full ingredient list, real price and where the price came from.

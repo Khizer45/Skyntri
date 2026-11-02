@@ -23,6 +23,7 @@ PRODUCT_CATEGORIES = [
 SKIN_TYPES = ["Normal", "Oily", "Dry", "Combination", "Sensitive"]
 
 ORDER_STATUSES = ["pending", "confirmed", "shipped", "delivered", "cancelled"]
+PAYMENT_STATUSES = ["unpaid", "paid", "refunded"]
 
 
 def _clean_list(values: list[str] | None, max_items: int = 100, max_len: int = 120) -> list[str]:
@@ -186,6 +187,7 @@ class OrderOut(BaseModel):
     user_email: str | None = None
     status: str
     payment_method: str
+    payment_status: str = "unpaid"
     subtotal: float
     currency: str
     shipping_name: str
@@ -199,4 +201,5 @@ class OrderOut(BaseModel):
 
 
 class OrderStatusUpdate(BaseModel):
-    status: Literal["pending", "confirmed", "shipped", "delivered", "cancelled"]
+    status: Literal["pending", "confirmed", "shipped", "delivered", "cancelled"] | None = None
+    payment_status: Literal["unpaid", "paid", "refunded"] | None = None

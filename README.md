@@ -1,13 +1,14 @@
 # Skyntri — AI-Based Skin Health Assistant
 
 Final Year Project (MUST, Dept. of Software Engineering).
-React + Vite frontend, FastAPI backend, EfficientNetB0 facial skin-concern model, Tesseract OCR ingredient scanner, OpenCV progress comparison, PDF reports and an AI assistant.
+React + Vite frontend, FastAPI backend with PostgreSQL, EfficientNet skin models (trained by you on Colab from `ml/notebooks/`), Tesseract OCR ingredient scanner, OpenCV progress comparison, PDF reports, an AI assistant, an ingredient-based shop and an admin panel.
 
 > Skyntri gives AI estimates for skin-care information. It is **not** a medical diagnosis tool.
 
 ```
-backend/    FastAPI API, model, migrations, tests, Dockerfile
+backend/    FastAPI API, migrations, tests, Dockerfile; backend/models/ holds the trained models
 frontend/   React/Vite single-page app
+ml/         Colab notebooks: dataset cleaning, training, evaluation, export (see ml/README.md)
 docs/       security audit, requirements, runbook, model card, test plan
 ```
 
@@ -19,11 +20,12 @@ Install **Docker Desktop**, then in the project folder:
 docker compose up --build
 ```
 
+* Before the first start, copy `.env.docker.example` to `.env` and set `POSTGRES_PASSWORD` (database password), `SECRET_KEY` (keeps you logged in across restarts) and `ADMIN_EMAILS` (your e-mail becomes admin).
 * App: http://localhost:5173 · API: http://localhost:8000 (docs at `/docs`)
 * The first build downloads TensorFlow, so it takes a while. Later starts are fast: `docker compose up`
-* Optional settings: copy `.env.docker.example` to `.env` and set `ADMIN_EMAILS` (your e-mail becomes admin) and `SECRET_KEY` (keeps you logged in across restarts).
-* The database and uploaded images live in the Docker volume `skyntri-data`, so they survive restarts.
-* **Trained models:** copy them into `backend/models/`, set the paths in `.env`, then `docker compose restart backend`. No rebuild is needed because the folder is mounted.
+* **Database:** PostgreSQL 16 runs as the `db` service. Its data lives in the Docker volume `skyntri-pg`, uploaded images in `skyntri-data`; both survive restarts.
+* **Admin:** log in with the e-mail from `ADMIN_EMAILS` (log out and in again after changing it). Or run `docker compose exec backend python -m app.cli make-admin you@example.com`. The *Admin panel* section at the top of the sidebar has Overview, Products, Orders & Payments and Users.
+* **Trained models:** copy them into `backend/models/` with the names in [ml/README.md](ml/README.md#4-where-to-save-the-trained-models-backend), then `docker compose restart backend`. No rebuild and no `.env` change are needed because the folder is mounted and the names are the defaults.
 * Stop: `docker compose down`. Delete all data too: `docker compose down -v`.
 
 ## Quick start (development)
@@ -63,3 +65,11 @@ Tests: `cd backend && pytest -q`. See [backend/README.md](backend/README.md) and
 * **Shop:** search products by the ingredients they contain or avoid, get suggestions from your latest facial analysis, then use the cart and cash-on-delivery orders. Admins create, edit and delete products (with images) and manage orders.
 
 Open items before a public launch are listed in [docs/01_Security_Audit_Report.md](docs/01_Security_Audit_Report.md#still-blocking-a-public-launch).
+
+## v1.3 additions
+
+* **Input gate v2:** real skin photos under warm or cool indoor light are no longer rejected as "not a skin image" (valid-skin rejection on the sample set fell from 10.7 % to 1.8 %). A trainable gate model (notebook 03) replaces the rules when installed.
+* **PostgreSQL** in Docker Compose and CI; SQLite still works for quick local runs.
+* **Admin panel:** overview (sales, payments, orders, stock, users), products, orders with cash-on-delivery payment tracking (unpaid → paid → refunded), and user management. CLI: `python -m app.cli make-admin | remove-admin | list-admins`.
+* **New look:** teal/coral theme, new sidebar and header with cart count, dashboard hero, dark mode.
+* **Models:** the old facial model was removed. New notebooks use better datasets (Kaggle Skin Issues v2 + Facial Skin 8-class for concerns; Skin Diseases Image Dataset + PAD-UFES-20 + optional ISIC 2019 for disease; COCO + DTD for the gate), face crop, test-time augmentation and an abstain threshold. See [ml/README.md](ml/README.md).

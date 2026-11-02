@@ -144,9 +144,8 @@ class Settings(BaseSettings):
     # ========================================================================
 
     # Model A — facial skin concerns (EfficientNetB0, 10-label multi-label).
-    dataset3_model_path: str = (
-        "models/EfficientNetB0_weighted_focal_finetuned_best.keras"
-    )
+    # Default file name exported by ml/notebooks/01_facial_skin_concerns_efficientnet.ipynb
+    dataset3_model_path: str = "models/facial_concerns_efficientnet.keras"
     facial_model_version: str = "facial-concerns-effnetb0-v1"
     # Exported by ml/notebooks/01_facial_skin_concerns_efficientnet.ipynb.
     # Optional: classes, thresholds, image size and version for Model A.

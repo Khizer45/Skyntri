@@ -47,6 +47,10 @@ export function OrderSummary({ order, children }) {
       </ul>
       <p className="mt-2 text-xs text-neutral-500">
         Deliver to {order.shipping_name}, {order.shipping_address}, {order.shipping_city} · {order.shipping_phone} · cash on delivery
+        {' · '}
+        <span className={order.payment_status === 'paid' ? 'font-semibold text-brand-700 dark:text-brand-300' : ''}>
+          payment {order.payment_status || 'unpaid'}
+        </span>
       </p>
       {children}
     </Card>

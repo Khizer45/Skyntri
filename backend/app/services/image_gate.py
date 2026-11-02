@@ -14,14 +14,16 @@ and the API returns an abstention with a reason code and guidance.
 
 IMPORTANT LIMITATION
 --------------------
-The interim heuristic (`skin-gate-heuristic-v1`) is a rule-based skin-colour
-and skin-region detector. It blocks the reported failure (phones, laptops,
+The interim heuristic (`skin-gate-heuristic-v2`) is a rule-based skin-colour
+and skin-region detector (YCrCb/RGB/HSV rules on the original and on a
+gray-world white-balanced copy, so warm or cool indoor light still counts). It blocks the reported failure (phones, laptops,
 screens, documents, rooms, landscapes...) in most cases, but it is NOT a
 validated classifier: objects with skin-like colours (wood, sand, some food,
 some animals) can pass, and very dark/very pale or unusually lit skin can be
 rejected. A trained skin/non-skin model with hard negatives must replace it
 before public launch. Drop the trained model at SKIN_GATE_MODEL_PATH and it
-is used automatically. See docs/ML_INPUT_GATE.md.
+is used automatically (ml/notebooks/03_skin_gate_efficientnet.ipynb trains
+it). See docs/ML_INPUT_GATE.md.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ from PIL import Image, ImageOps
 
 from app.core.config import settings
 
-HEURISTIC_GATE_VERSION = "skin-gate-heuristic-v1"
+HEURISTIC_GATE_VERSION = "skin-gate-heuristic-v2"
 
 # ----------------------------------------------------------------------------
 # Thresholds (heuristic). Documented in docs/ML_INPUT_GATE.md.
@@ -49,14 +51,14 @@ BRIGHT_LUMA = 235.0
 MIN_CONTRAST_STD = 4.0
 MIN_SHARPNESS = 6.0
 
-SKIN_ACCEPT_RATIO = 0.30
-SKIN_ACCEPT_REGION = 0.18
-SKIN_REJECT_RATIO = 0.12
-GRAY_REJECT_RATIO = 0.70
+SKIN_ACCEPT_RATIO = 0.25
+SKIN_ACCEPT_REGION = 0.12
+SKIN_REJECT_RATIO = 0.06
+GRAY_REJECT_RATIO = 0.80
 
 # Facial scope (Model A): a frontal face must be detected, unless the photo
 # is a close-up where skin fills most of the frame.
-CLOSEUP_SKIN_RATIO = 0.75
+CLOSEUP_SKIN_RATIO = 0.70
 CLOSEUP_SKIN_REGION = 0.60
 
 ANALYSIS_SIZE = 256
@@ -198,33 +200,63 @@ def _quality_problem(size: tuple[int, int], metrics: dict[str, float]) -> GateRe
 # Heuristic skin detector
 # ============================================================================
 
-def skin_mask(rgb: np.ndarray) -> np.ndarray:
+def _gray_world(rgb: np.ndarray) -> np.ndarray:
     """
-    Combined YCrCb + RGB skin-colour rule (covers light to dark skin tones
-    under ordinary lighting). Returns a boolean mask.
+    Gray-world white balance: removes colour casts from indoor/yellow,
+    blue/cold or tinted light so skin keeps its normal hue. Gains are
+    limited so already-neutral photos are barely changed.
     """
     rgbf = rgb.astype(np.float32)
+    means = rgbf.reshape(-1, 3).mean(axis=0)
+    gray = float(means.mean())
+    gains = np.clip(gray / np.maximum(means, 1.0), 0.8, 1.25)
+    return np.clip(rgbf * gains, 0, 255)
+
+
+def _rule_masks(rgbf: np.ndarray) -> np.ndarray:
     r, g, b = rgbf[..., 0], rgbf[..., 1], rgbf[..., 2]
 
     y = 0.299 * r + 0.587 * g + 0.114 * b
     cr = (r - y) * 0.713 + 128.0
     cb = (b - y) * 0.564 + 128.0
 
-    ycrcb_rule = (cr >= 133) & (cr <= 180) & (cb >= 75) & (cb <= 130) & (y >= 25)
+    # Broad YCrCb skin locus (light to very dark skin tones)
+    ycrcb_rule = (cr >= 130) & (cr <= 185) & (cb >= 70) & (cb <= 135) & (y >= 20)
 
     max_c = np.maximum(np.maximum(r, g), b)
     min_c = np.minimum(np.minimum(r, g), b)
-    rgb_rule = (
-        (r > 50)
-        & (g > 25)
-        & (b > 10)
-        & ((max_c - min_c) > 12)
-        & (r > g)
-        & (r > b)
-        & (np.abs(r - g) > 8)
-    )
+    rgb_rule = (r > 40) & (g > 20) & (b > 10) & ((max_c - min_c) > 8) & (r >= g) & (r >= b)
 
-    return ycrcb_rule & rgb_rule
+    # HSV rule: warm hues with moderate saturation (helps reddish/irritated skin)
+    v = max_c / 255.0
+    sat = np.where(max_c > 0, (max_c - min_c) / np.maximum(max_c, 1.0), 0.0)
+    delta = np.maximum(max_c - min_c, 1e-6)
+    hue = np.where(
+        max_c == r,
+        (60.0 * ((g - b) / delta)) % 360.0,
+        np.where(max_c == g, 60.0 * ((b - r) / delta) + 120.0, 60.0 * ((r - g) / delta) + 240.0),
+    )
+    hsv_rule = ((hue <= 50) | (hue >= 335)) & (sat >= 0.08) & (sat <= 0.85) & (v >= 0.15)
+
+    return (ycrcb_rule & rgb_rule) | (hsv_rule & ycrcb_rule) | (hsv_rule & rgb_rule)
+
+
+def skin_mask(rgb: np.ndarray) -> np.ndarray:
+    """
+    Skin-colour mask that is robust to lighting: evaluated on the original
+    photo and on a white-balanced copy, and a pixel counts as skin if
+    either view says so.
+    """
+    rgbf = rgb.astype(np.float32)
+    max_c = rgbf.max(axis=2)
+    min_c = rgbf.min(axis=2)
+    saturation = np.where(max_c > 0, (max_c - min_c) / np.maximum(max_c, 1.0), 0.0)
+
+    # White balancing must not turn neutral grey objects (screens, bezels,
+    # walls) into "skin": the balanced view only counts pixels that already
+    # had some colour in the original photo.
+    balanced = _rule_masks(_gray_world(rgb)) & (saturation >= 0.06)
+    return _rule_masks(rgbf) | balanced
 
 
 def _largest_region_fraction(mask: np.ndarray) -> float:
@@ -375,6 +407,23 @@ def _load_trained_gate():
     return model
 
 
+@lru_cache(maxsize=1)
+def _gate_thresholds() -> tuple[float, float]:
+    """Accept/reject thresholds: from the exported gate metadata if present."""
+    accept, reject = settings.skin_gate_accept_threshold, settings.skin_gate_reject_threshold
+    meta_path = Path(settings.skin_gate_model).with_name("skin_gate_metadata.json")
+    if meta_path.is_file():
+        try:
+            import json
+
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            accept = float(meta.get("accept_threshold", accept))
+            reject = float(meta.get("reject_threshold", reject))
+        except Exception:
+            pass
+    return accept, min(reject, accept)
+
+
 def trained_gate_available() -> bool:
     return Path(settings.skin_gate_model).exists()
 
@@ -441,11 +490,13 @@ def assess_image(path: str | Path, track: str = "facial_concerns") -> GateResult
         metrics["gate_probability"] = probability
         version = f"skin-gate-model:{Path(settings.skin_gate_model).name}"
 
-        if probability >= settings.skin_gate_accept_threshold:
+        accept_t, reject_t = _gate_thresholds()
+
+        if probability >= accept_t:
             accepted = GateResult("accepted", "accepted", "Image accepted for analysis.", gate_version=version, metrics=metrics)
             return _facial_scope(path, metrics, accepted) if track == "facial_concerns" else accepted
 
-        if probability < settings.skin_gate_reject_threshold:
+        if probability < reject_t:
             return GateResult("rejected", NOT_SKIN[0], NOT_SKIN[1], RETAKE_GUIDANCE, version, metrics)
 
         return GateResult("uncertain", UNCERTAIN[0], UNCERTAIN[1], RETAKE_GUIDANCE, version, metrics)

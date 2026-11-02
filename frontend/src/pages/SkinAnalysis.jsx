@@ -21,7 +21,11 @@ export default function SkinAnalysis() {
   const { showToast } = useToast()
 
   useEffect(() => {
-    api.getAnalysisTracks().then(setTracks)
+    api.getAnalysisTracks().then((list) => {
+      setTracks(list)
+      const firstAvailable = list.find((t) => t.available)
+      if (firstAvailable) setTrack(firstAvailable.id)
+    })
   }, [])
 
   const handleAnalyze = async () => {
@@ -53,7 +57,7 @@ export default function SkinAnalysis() {
   }
 
   return (
-    <DashboardLayout title="Skin Analysis">
+    <DashboardLayout title="Skin Analysis" subtitle="AI estimate of visible skin concerns — not a diagnosis">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-5">
           <div className="mb-4 flex items-center gap-2">
@@ -95,13 +99,16 @@ export default function SkinAnalysis() {
                       {option.label}
                       {!option.available && (
                         <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-                          Coming later
+                          Not available yet
                         </span>
                       )}
                     </span>
                     <span className="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400">
                       {option.description}
                     </span>
+                    {!option.available && option.reason && (
+                      <span className="mt-1 block text-[11px] text-amber-700 dark:text-amber-300">{option.reason}</span>
+                    )}
                   </span>
                 </label>
               ))}
@@ -157,7 +164,7 @@ export default function SkinAnalysis() {
                 <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
                 <div>
                   <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                    {abstention.code === 'track_not_available'
+                    {abstention.code === 'track_not_available' || abstention.code === 'model_not_installed'
                       ? 'Not available yet'
                       : 'This image was not analyzed'}
                   </h3>

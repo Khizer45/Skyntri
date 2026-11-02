@@ -26,9 +26,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image, ImageOps
 
 from app.core.config import settings
+from app.services.model_io import prepare_batch
 
 DISCLAIMER = (
     "This is AI screening support, not a diagnosis. It cannot diagnose or rule "
@@ -76,9 +76,14 @@ def load_metadata() -> dict[str, Any]:
     if not classes or any(c not in classes for c in referral):
         raise ValueError("Invalid disease model metadata (classes/referral_classes).")
 
+    caution = [str(c) for c in meta.get("caution_classes", []) if str(c) in classes]
+
     return {
         "classes": classes,
         "referral_classes": referral,
+        "caution_classes": caution,
+        "tta": bool(meta.get("tta", False)),
+        "display_names": dict(meta.get("display_names") or {}),
         "other_class": other,
         "referral_threshold": float(meta.get("referral_threshold", 0.05)),
         "abstain_below": float(meta.get("abstain_below", 0.5)),
@@ -107,12 +112,9 @@ def model_loaded() -> bool:
     return load_model.cache_info().currsize > 0
 
 
-def _preprocess(path: Path, size: int) -> np.ndarray:
-    with Image.open(path) as image:
-        image = ImageOps.exif_transpose(image).convert("RGB")
-        image = image.resize((size, size), Image.Resampling.BILINEAR)
-        array = np.asarray(image, dtype=np.float32)
-    return array[None, ...]  # 0..255, EfficientNet rescales internally
+def _preprocess(path: Path, size: int, tta: bool = False) -> np.ndarray:
+    # 0..255, EfficientNet rescales internally; optional flip for TTA
+    return prepare_batch(path, size, face_crop=False, tta=tta)
 
 
 def interpret(probs: np.ndarray, meta: dict[str, Any]) -> dict[str, Any]:
@@ -141,6 +143,22 @@ def interpret(probs: np.ndarray, meta: dict[str, Any]) -> dict[str, Any]:
     if probs[top] < meta["abstain_below"]:
         return {"status": "uncertain"}
 
+    shown = meta.get("display_names", {}).get(top_class, top_class)
+
+    if top_class in meta.get("caution_classes", []):
+        return {
+            "status": "completed",
+            "conditions": [f"{shown} - features of a skin lesion"],
+            "summary": (
+                f"The photo shows features often seen in {shown.lower()}. Only a doctor can "
+                "confirm that a mole or spot is harmless. See a dermatologist if it is new, "
+                "changing in size, shape or colour, bleeding, itchy or painful."
+            ),
+            "referral": False,
+            "confidence_score": confidence,
+            "severity_level": "Moderate",
+        }
+
     if top_class == meta["other_class"]:
         return {
             "status": "completed",
@@ -156,9 +174,9 @@ def interpret(probs: np.ndarray, meta: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "status": "completed",
-        "conditions": [f"Features that may be consistent with {top_class}"],
+        "conditions": [f"Features that may be consistent with {shown}"],
         "summary": (
-            f"Some features may be consistent with {top_class}. Only a clinician can "
+            f"Some features may be consistent with {shown}. Only a clinician can "
             "confirm a diagnosis."
         ),
         "referral": False,
@@ -173,10 +191,11 @@ def screen_image(image_path: str | Path) -> dict[str, Any]:
 
     meta = load_metadata()
     model = load_model()
-    array = _preprocess(Path(image_path), meta["image_size"])
+    array = _preprocess(Path(image_path), meta["image_size"], meta.get("tta", False))
 
     with _lock:
-        probs = np.asarray(model.predict(array, verbose=0)).reshape(-1)
+        probs = np.asarray(model.predict(array, verbose=0), dtype=np.float32)
+    probs = probs.mean(axis=0) if probs.ndim == 2 else probs.reshape(-1)
 
     result = interpret(probs, meta)
     result["model_version"] = meta["model_version"]

@@ -37,8 +37,18 @@ export default function AdminOrders() {
     }
   }
 
+  const pay = async (order, paymentStatus) => {
+    try {
+      const updated = await api.adminUpdatePayment(order.id, paymentStatus)
+      setOrders((list) => list.map((o) => (o.id === order.id ? updated : o)))
+      showToast(`Payment marked ${paymentStatus}.`, 'success')
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
   return (
-    <DashboardLayout title="Manage Orders">
+    <DashboardLayout title="Orders & Payments" subtitle="Confirm, ship and deliver orders; record cash payments">
       <div className="mb-4 flex items-center gap-2">
         <label className="text-sm text-neutral-600 dark:text-neutral-300">Status</label>
         <select
@@ -57,6 +67,22 @@ export default function AdminOrders() {
       <div className="space-y-4">
         {orders?.map((order) => (
           <OrderSummary key={order.id} order={order}>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-neutral-500">Payment (cash on delivery):</span>
+              <span className={`badge ${order.payment_status === 'paid' ? 'bg-brand-50 text-brand-700' : order.payment_status === 'refunded' ? 'bg-amber-50 text-amber-700' : 'bg-neutral-100 text-neutral-600'}`}>
+                {order.payment_status}
+              </span>
+              {order.payment_status === 'unpaid' && order.status !== 'cancelled' && (
+                <button onClick={() => pay(order, 'paid')} className="rounded-lg border border-brand-300 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50">
+                  Mark cash received
+                </button>
+              )}
+              {order.payment_status === 'paid' && (
+                <button onClick={() => pay(order, 'refunded')} className="rounded-lg border border-amber-300 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50">
+                  Mark refunded
+                </button>
+              )}
+            </div>
             {NEXT[order.status].length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {NEXT[order.status].map((s) => (

@@ -1,6 +1,6 @@
 # API authorization matrix
 
-Legend: **Public** = no token. **User** = valid access token; data is always filtered by `user_id = current user`. **Admin** = `users.role = 'admin'` read from the database (granted via `ADMIN_EMAILS` or a DB update, never from the client). **Signed** = short-lived HMAC-signed URL issued only inside the owner's API responses.
+Legend: **Public** = no token. **User** = valid access token; data is always filtered by `user_id = current user`. **Admin** = `users.role = 'admin'` read from the database (granted via `ADMIN_EMAILS`, the `python -m app.cli make-admin` command or another admin in *Admin → Users*; never from the client). **Signed** = short-lived HMAC-signed URL issued only inside the owner's API responses.
 
 | Endpoint | Access | Ownership / notes | Rate limit |
 |---|---|---|---|
@@ -15,7 +15,7 @@ Legend: **Public** = no token. **User** = valid access token; data is always fil
 | `POST /profile/avatar` | User | Validated private upload | 20/h per user |
 | `POST /contact` | Public | Returns receipt only, never stored messages | 5/h per IP |
 | `GET /contact`, `GET/DELETE /contact/{id}` | **Admin** | — | — |
-| `GET /analyses/tracks` | Public | Which analysis tracks are available | — |
+| `GET /analyses/tracks` | Public | Which analysis tracks are available, with a `reason` when a model is not installed | — |
 | `POST /analyses/analyze` | User | Input gate + abstention; Model B only when enabled (else `track_not_available`) | 30/h per user; max 2 concurrent inferences per process |
 | `POST /analyses` | User | `image_url` must already belong to the caller | — |
 | `GET /analyses`, `GET /analyses/{id}` | User | Filtered by owner (404 otherwise) | — |
@@ -33,7 +33,9 @@ Legend: **Public** = no token. **User** = valid access token; data is always fil
 | `GET/POST/PATCH/DELETE /cart…` | User | Own cart only | — |
 | `POST /orders`, `GET /orders`, `GET /orders/{id}`, `POST /orders/{id}/cancel` | User | Own orders only; prices taken from the database; atomic stock reservation | 20 orders/h per user |
 | `GET/POST/PUT/DELETE /admin/products…`, `POST /admin/products/{id}/image` | **Admin** | — | — |
-| `GET /admin/orders`, `PATCH /admin/orders/{id}` | **Admin** | Status transitions are validated | — |
+| `GET /admin/orders`, `PATCH /admin/orders/{id}` | **Admin** | Order status and payment status (`unpaid → paid → refunded`) transitions are validated; cancelling restocks | — |
+| `GET /admin/stats` | **Admin** | Aggregate counts and payment totals only | — |
+| `GET /admin/users`, `PATCH /admin/users/{id}` | **Admin** | Change role (`user`/`admin`) or deactivate; an admin cannot demote or deactivate themselves | — |
 | `GET /files/products/{name}` | Public | Product photos only (never user photos) | — |
 | `GET /files/{folder}/{name}?exp&sig` | **Signed** | Signature bound to the exact path; expires after `SIGNED_URL_TTL_SECONDS` (900 s) | — |
 | `GET /health`, `/health/live` | Public | Liveness only | — |

@@ -69,6 +69,12 @@ export default function ProgressChecker() {
           </div>
         </div>
 
+        <p className="mt-4 rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:bg-neutral-800/60 dark:text-neutral-300">
+          This is an approximate visual comparison, not a clinical measurement.
+          For a fair comparison, take both photos in the same lighting, at the
+          same distance and angle, without filters or make-up.
+        </p>
+
         <Button
           onClick={handleCompare}
           disabled={!beforeFile || !afterFile}

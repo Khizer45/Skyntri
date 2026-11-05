@@ -1,11 +1,11 @@
 from io import BytesIO
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.config import settings
 from app.main import app
 from app.db.database import Base, get_db
 
@@ -62,25 +62,11 @@ def test_progress_tracking_integration(tmp_path, monkeypatch):
         lambda: None,
     )
 
-    # Clear authentication lockout state
-    monkeypatch.setattr(
-        "app.routers.auth._failed_attempts",
-        {},
-    )
 
     # ---------------------------------------------------------
     # Use a temporary upload location for the progress router
     # ---------------------------------------------------------
-    monkeypatch.setattr(
-        "app.routers.progress.settings",
-        type(
-            "TestSettings",
-            (),
-            {
-                "upload_path": tmp_path,
-            },
-        )(),
-    )
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
     # ---------------------------------------------------------
     # Replace upload saving only.
@@ -184,11 +170,12 @@ def test_progress_tracking_integration(tmp_path, monkeypatch):
             data = response.json()
 
             assert "id" in data
+            # Private images are returned as signed URLs.
             assert data["before_image_url"].startswith(
-                "/uploads/progress/"
+                "/files/progress/"
             )
             assert data["after_image_url"].startswith(
-                "/uploads/progress/"
+                "/files/progress/"
             )
 
             assert data["status"] in {

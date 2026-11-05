@@ -46,11 +46,6 @@ def test_brute_force_login_protection(
         lambda: None,
     )
 
-    # Clear any previous lockout state
-    monkeypatch.setattr(
-        "app.routers.auth._failed_attempts",
-        {},
-    )
 
     try:
         with TestClient(app) as client:

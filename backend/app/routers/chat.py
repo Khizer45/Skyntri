@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import ChatMessage, IngredientScan, SkinAnalysis, User
 from app.dependencies import get_current_user
 from app.schemas import ChatMessageOut, ChatRequest
+from app.services import rate_limit
 from app.services.chat import (
     MAX_HISTORY_MESSAGES,
     MAX_USER_MESSAGE_LENGTH,
@@ -65,6 +67,14 @@ def send_message(
     The external Gemini API is optional. The local fallback keeps the
     assistant functional when the API is unavailable.
     """
+
+    rate_limit.enforce(
+        db,
+        "chat",
+        current_user.id,
+        settings.chat_per_hour,
+        message="Message limit reached. Please wait a while before sending more messages.",
+    )
 
     message = (payload.message or "").strip()
 
@@ -211,7 +221,7 @@ def send_message(
             },
         }
 
-    except Exception as exc:
+    except Exception:
         # Context is helpful but must never prevent the assistant from
         # responding. Use empty context if database/context loading fails.
         user_context = {}

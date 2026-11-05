@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Activity,
   ClipboardList,
+  ShoppingBag,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -41,20 +42,35 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout title="Dashboard">
-      <section>
-        <h2 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
-          Welcome back, {user?.fullName?.split(' ')[0] || 'there'}
-        </h2>
-        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Your AI-powered skin health assistant</p>
+      <section className="relative overflow-hidden rounded-3xl bg-hero-gradient p-6 text-white shadow-glow sm:p-8">
+        <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute -bottom-20 right-24 h-48 w-48 rounded-full bg-accent-400/20 blur-2xl" />
+        <div className="relative max-w-xl">
+          <p className="text-sm font-medium text-white/80">{new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <h2 className="mt-1 font-display text-3xl font-bold">
+            Welcome back, {user?.fullName?.split(' ')[0] || 'there'}
+          </h2>
+          <p className="mt-2 text-sm text-white/85">
+            Take a clear selfie in natural light to see your visible skin concerns, then find affordable products with the right ingredients.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link to="/skin-analysis" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-brand-800 shadow hover:bg-brand-50">
+              <ScanFace className="h-4 w-4" /> Analyze my skin
+            </Link>
+            <Link to="/shop" className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/30 hover:bg-white/25">
+              <ShoppingBag className="h-4 w-4" /> Shop by ingredient
+            </Link>
+          </div>
+        </div>
       </section>
 
       <section className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {quickActions.map(({ to, label, icon: Icon, desc }) => (
           <Link key={to} to={to}>
-            <Card className="group h-full p-4 transition-colors hover:border-brand-300 dark:hover:border-brand-700">
+            <Card className="group h-full p-5 transition-all hover:-translate-y-0.5 hover:shadow-card-hover">
               <div className="flex items-start justify-between">
-                <div className="rounded-lg bg-brand-50 p-2 dark:bg-brand-900/30">
-                  <Icon className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+                <div className="rounded-xl bg-brand-gradient p-2.5 shadow-glow">
+                  <Icon className="h-4 w-4 text-white" />
                 </div>
                 <ArrowUpRight className="h-4 w-4 text-neutral-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-500" />
               </div>

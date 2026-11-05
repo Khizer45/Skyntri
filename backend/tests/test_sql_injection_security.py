@@ -43,10 +43,6 @@ def test_sql_injection_and_malicious_input_handling(
         lambda: None,
     )
 
-    monkeypatch.setattr(
-        "app.routers.auth._failed_attempts",
-        {},
-    )
 
     try:
         with TestClient(app) as client:

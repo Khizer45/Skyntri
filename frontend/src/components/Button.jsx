@@ -2,7 +2,9 @@ import { Loader2 } from 'lucide-react'
 
 const variants = {
   primary:
-    'bg-brand-600 text-white hover:bg-brand-700 disabled:bg-brand-300 dark:disabled:bg-brand-900',
+    'bg-brand-gradient text-white shadow-glow hover:brightness-105 active:brightness-95 disabled:opacity-60 disabled:shadow-none',
+  accent:
+    'bg-accent-500 text-white hover:bg-accent-600 disabled:bg-accent-300',
   secondary:
     'bg-neutral-100 text-neutral-800 hover:bg-neutral-200 dark:bg-panel-dark dark:text-neutral-200 dark:hover:bg-neutral-800',
   outline:
@@ -13,9 +15,9 @@ const variants = {
 }
 
 const sizes = {
-  sm: 'text-xs px-2.5 py-1.5 rounded-md gap-1.5',
-  md: 'text-sm px-3.5 py-2 rounded-lg gap-2',
-  lg: 'text-sm px-4 py-2.5 rounded-lg gap-2',
+  sm: 'text-xs px-2.5 py-1.5 rounded-lg gap-1.5',
+  md: 'text-sm px-4 py-2 rounded-xl gap-2',
+  lg: 'text-sm px-5 py-2.5 rounded-xl gap-2',
 }
 
 export default function Button({

@@ -13,8 +13,9 @@ Everything runs from `docker-compose.prod.yml`. Only Caddy is reachable from out
 ## 1. Get a server
 
 * **Ubuntu 24.04**, at least **4 GB RAM** (8 GB is more comfortable: TensorFlow, PostgreSQL and the image build share it), 40 GB disk.
-* Options: Hetzner Cloud (cheapest), DigitalOcean, AWS Lightsail, Azure, Google Cloud.
-* **Students:** the GitHub Student Developer Pack (https://education.github.com/pack) gives free credit, for example on DigitalOcean. *Azure for Students* also gives credit without a card.
+* Options: Contabo (most RAM for the price), Hetzner Cloud, Vultr, DigitalOcean, AWS Lightsail, Azure. Choose an **x86 (Intel/AMD)** plan, not ARM.
+* Prices change often. Check the provider's own pricing page, including VAT and the IPv4 fee.
+* **Students:** *Azure for Students* (https://azure.microsoft.com/free/students) gives credit without a credit card. The GitHub Student Developer Pack offers change over time: check https://education.github.com/pack.
 * Free hosting such as Render or Railway does not have enough memory for the TensorFlow model.
 
 Write down the server's **public IP address**.

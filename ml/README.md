@@ -118,6 +118,18 @@ docker compose restart backend
 
 Check: open http://localhost:8000/health/ready. `facial_model.artifact_present` should be `true`, `input_gate.version` should start with `skin-gate-model` once the gate model is installed, and `disease_model` shows `enabled: true` after you switch it on.
 
+### Model files exported before the fix (wrong predictions)
+
+Keras builds EfficientNetB0–B7 with ImageNet weights with one extra `Rescaling` layer after the input normalisation; `weights=None` leaves it out. The notebooks first exported with `build_model(weights=None)`, so those `.keras` files lost that layer: the weights are right, but the predictions are not (the export check shows a large difference). The notebooks now export with `build_model()`.
+
+An affected file can be repaired without data or a GPU (Colab or any machine with TensorFlow):
+
+```bash
+python ml/tools/repair_efficientnet_export.py facial_concerns_efficientnet.keras
+```
+
+It writes `facial_concerns_efficientnet_fixed.keras`; rename it back to the normal name before copying it into `backend/models/`.
+
 ### Where the paths are in the code (only if you use other file names)
 
 | What | Setting (`.env`) | Default | Code that loads it |

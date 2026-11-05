@@ -28,6 +28,16 @@ docker compose up --build
 * **Trained models:** copy them into `backend/models/` with the names in [ml/README.md](ml/README.md#4-where-to-save-the-trained-models-backend), then `docker compose restart backend`. No rebuild and no `.env` change are needed because the folder is mounted and the names are the defaults.
 * Stop: `docker compose down`. Delete all data too: `docker compose down -v`.
 
+## Put it live (server + HTTPS)
+
+To let other people open Skyntri from a link, follow [docs/DEPLOY_VPS.md](docs/DEPLOY_VPS.md):
+1. Get a VPS (4 GB RAM or more) and two web addresses for it.
+2. `cp .env.production.example .env` and fill it in.
+3. Copy the model files into `backend/models/`.
+4. Run `docker compose -f docker-compose.prod.yml up -d --build`.
+
+Caddy gets the HTTPS certificates automatically.
+
 ## Quick start (development)
 
 Backend (Python 3.13 recommended; install Tesseract for the ingredient scanner):

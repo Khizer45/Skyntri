@@ -1,6 +1,6 @@
 import { Mail } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import Button from '../components/Button.jsx'
 import AuthLayout from '../layouts/AuthLayout.jsx'
 import * as api from '../services/api.js'
@@ -10,8 +10,6 @@ export default function ForgotPassword() {
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [devToken, setDevToken] = useState('')
-  const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -19,8 +17,7 @@ export default function ForgotPassword() {
     setError('')
 
     try {
-      const result = await api.forgotPassword(email)
-      setDevToken(result?.dev_reset_token || '')
+      await api.forgotPassword(email)
       setSent(true)
     } catch (err) {
       setError(err.message || 'Unable to process the request.')
@@ -34,23 +31,13 @@ export default function ForgotPassword() {
       {sent ? (
         <div className="space-y-4">
           <p className="rounded-lg bg-brand-50 px-3 py-2.5 text-sm text-brand-800 dark:bg-brand-900/20 dark:text-brand-200">
-            If an account exists for {email}, a password reset request has been created.
+            If an account exists for {email}, we have sent a password reset link.
           </p>
 
-          {devToken && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-900/20">
-              <p className="text-xs text-amber-800 dark:text-amber-200">
-                Local development mode: email delivery is not configured yet.
-              </p>
-              <button
-                type="button"
-                onClick={() => navigate(`/reset-password?token=${encodeURIComponent(devToken)}`)}
-                className="mt-2 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
-              >
-                Continue to password reset
-              </button>
-            </div>
-          )}
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Check your inbox (and spam folder) for a reset link. The link expires
+            soon and can only be used once.
+          </p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -74,7 +61,7 @@ export default function ForgotPassword() {
           )}
 
           <Button type="submit" icon={Mail} loading={loading} className="w-full">
-            Create reset request
+            Send reset link
           </Button>
         </form>
       )}

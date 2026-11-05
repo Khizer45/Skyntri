@@ -42,11 +42,6 @@ def test_ingredient_scanner_integration(tmp_path, monkeypatch):
         lambda: None,
     )
 
-    # Clear authentication lockout state
-    monkeypatch.setattr(
-        "app.routers.auth._failed_attempts",
-        {},
-    )
 
     # ---------------------------------------------------------
     # Add test ingredients to the temporary database
@@ -166,8 +161,8 @@ def test_ingredient_scanner_integration(tmp_path, monkeypatch):
             data = response.json()
 
             assert "id" in data
-            assert data["image_url"] == (
-                "/uploads/ingredients_scans/test-ingredient.jpg"
+            assert data["image_url"].startswith(
+                "/files/ingredients_scans/test-ingredient.jpg?exp="
             )
 
             assert data["total_ingredients"] == 2

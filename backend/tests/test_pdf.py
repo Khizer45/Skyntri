@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.core.config import settings
 from app.services.pdf_report import generate_report_pdf
 
 

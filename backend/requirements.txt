@@ -1,6 +1,9 @@
+# Tested with Python 3.13 (see Dockerfile). Keep versions pinned (SEC-APP-006).
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 SQLAlchemy==2.0.35
+alembic==1.20.1
+psycopg[binary]==3.2.3
 pydantic==2.9.2
 pydantic-settings==2.5.2
 python-jose[cryptography]==3.3.0
@@ -11,10 +14,16 @@ python-dotenv==1.0.1
 email-validator==2.2.0
 python-dateutil==2.9.0
 
+# OCR: pytesseract is only a wrapper. The Tesseract executable must be
+# installed on the host/container (apt-get install tesseract-ocr).
 pytesseract==0.3.13
-Pillow==10.4.0
-rapidfuzz==3.9.7
+Pillow==13.0.0
+rapidfuzz==3.14.6
+
+# Computer vision (progress comparison + input gate face check).
+# Headless build: no GUI libraries on servers. 4.x keeps CascadeClassifier.
+opencv-python-headless==4.14.0.94
 
 # AI inference
-numpy==1.26.4
+numpy==2.5.4
 tensorflow==2.20.0

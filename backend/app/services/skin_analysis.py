@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import re
+import threading
+
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import tensorflow as tf
-from PIL import Image, UnidentifiedImageError
 
 from app.core.config import settings
+from app.services.model_io import prepare_batch
 
 
 # ============================================================
@@ -332,22 +335,170 @@ def _display_name(condition: str) -> str:
     """
     Convert internal condition name into a user-facing name.
     """
-    return DISPLAY_NAMES.get(condition, condition)
+    custom = facial_model_config().get("display_names") or {}
+    return custom.get(condition) or DISPLAY_NAMES.get(condition, condition)
 
 
-def _unique_preserve_order(items: list[str]) -> list[str]:
+_TIP_STOPWORDS = frozenset(
+    "a an and or the your you to of for if it its is be in on with when "
+    "use using avoid avoiding may can regularly daily gently gentle "
+    "consider keep try appropriate suitable".split()
+)
+
+
+def _tip_keywords(text: str) -> frozenset[str]:
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    stems = set()
+    for word in words:
+        if word in _TIP_STOPWORDS or len(word) < 3:
+            continue
+        # crude stemming so "scrubs"/"scrubbing"/"scrub" collapse
+        for suffix in ("ing", "es", "s", "ed"):
+            if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+                word = word[: -len(suffix)]
+                break
+        if len(word) >= 5 and word[-1] == word[-2]:
+            word = word[:-1]
+        stems.add(word)
+    return frozenset(stems)
+
+
+def _unique_preserve_order(
+    items: list[str],
+    *,
+    limit: int | None = None,
+) -> list[str]:
     """
-    Remove duplicates while preserving recommendation order.
+    Remove exact and near-duplicate tips while preserving order.
+
+    Two tips are treated as the same advice when one's keywords are a
+    subset of the other's, or they share most keywords ("Avoid harsh
+    scrubbing" / "Harsh physical scrubs" / "Use a gentle cleanser and
+    avoid harsh scrubbing" keep only the first wording).
     """
     seen: set[str] = set()
+    kept_keywords: list[frozenset[str]] = []
     result: list[str] = []
 
     for item in items:
-        if item and item not in seen:
-            seen.add(item)
-            result.append(item)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        keywords = _tip_keywords(item)
+        duplicate = False
+        for other in kept_keywords:
+            if not keywords or not other:
+                continue
+            overlap = len(keywords & other)
+            smaller = min(len(keywords), len(other))
+            if (overlap == smaller and smaller >= 2) or overlap / len(keywords | other) >= 0.6:
+                duplicate = True
+                break
+        if duplicate:
+            continue
+        kept_keywords.append(keywords)
+        result.append(item)
+        if limit is not None and len(result) >= limit:
+            break
 
     return result
+
+
+# ============================================================
+# Model configuration (classes / thresholds / input size)
+# ============================================================
+#
+# When you retrain Model A with ml/notebooks/01_facial_skin_concerns_
+# efficientnet.ipynb, copy the exported files into backend/models/ and
+# point the settings at them:
+#
+#   DATASET3_MODEL_PATH=models/facial_concerns_efficientnet.keras
+#   FACIAL_MODEL_METADATA_PATH=models/facial_concerns_metadata.json
+#
+# The metadata JSON supplies classes, per-class thresholds, image size
+# and model version. Without it, the built-in values above are used
+# (they belong to the original EfficientNetB0 artifact).
+
+import json  # noqa: E402
+import logging  # noqa: E402
+
+_logger = logging.getLogger("skyntri.models")
+
+
+@lru_cache(maxsize=1)
+def facial_model_config() -> dict[str, Any]:
+    default = {
+        "classes": list(DATASET3_CLASSES),
+        "thresholds": dict(DATASET3_THRESHOLDS),
+        "image_size": IMAGE_SIZE[0],
+        "model_version": settings.facial_model_version,
+        "output": "sigmoid",
+        "abstain_below": 0.0,
+        "face_crop": False,
+        "face_margin": 0.35,
+        "tta": False,
+        "display_names": {},
+        "source": "built-in",
+    }
+
+    meta_path = Path(settings.facial_model_metadata)
+    if not meta_path.is_file():
+        return default
+
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        classes = [str(c) for c in meta["classes"]]
+        thresholds = {c: float(meta["thresholds"][c]) for c in classes}
+        size = int(meta.get("image_size", IMAGE_SIZE[0]))
+        if not classes or not (32 <= size <= 1024):
+            raise ValueError("invalid classes or image_size")
+        if not all(0.0 < t < 1.0 for t in thresholds.values()):
+            raise ValueError("thresholds must be between 0 and 1")
+    except Exception as exc:
+        raise ValueError(f"Invalid facial model metadata file: {exc}") from exc
+
+    unknown = [c for c in classes if c not in CONDITION_RECOMMENDATIONS and c != "Normal Skin"]
+    if unknown:
+        _logger.warning(
+            "facial_model_unknown_classes",
+            extra={"event": "facial_model_unknown_classes", "classes": unknown},
+        )
+
+    face = meta.get("face_crop") or {}
+    return {
+        "classes": classes,
+        "thresholds": thresholds,
+        "image_size": size,
+        "model_version": str(meta.get("model_version") or settings.facial_model_version),
+        "output": str(meta.get("output", "sigmoid")).split()[0].lower(),
+        "abstain_below": float(meta.get("abstain_below", 0.0) or 0.0),
+        "face_crop": bool(face.get("enabled", False)) if isinstance(face, dict) else bool(face),
+        "face_margin": float(face.get("margin", 0.35)) if isinstance(face, dict) else 0.35,
+        "tta": bool(meta.get("tta", False)),
+        "display_names": dict(meta.get("display_names") or {}),
+        "source": meta_path.name,
+    }
+
+
+# ============================================================
+# Inference concurrency (SEC-UP-007)
+# ============================================================
+
+class InferenceBusyError(RuntimeError):
+    """Raised when too many inferences are already running."""
+
+
+_inference_slots = threading.BoundedSemaphore(
+    max(1, int(settings.max_concurrent_inference))
+)
+
+
+def model_loaded() -> bool:
+    return load_dataset3_model.cache_info().currsize > 0
+
+
+def model_artifact_available() -> bool:
+    return Path(settings.dataset3_model).is_file()
 
 
 # ============================================================
@@ -397,10 +548,12 @@ def load_dataset3_model() -> tf.keras.Model:
             "Could not determine Dataset 3 model output size."
         )
 
-    if output_count != len(DATASET3_CLASSES):
+    expected = len(facial_model_config()["classes"])
+
+    if output_count != expected:
         raise ValueError(
-            "Dataset 3 EfficientNetB0 model output mismatch: "
-            f"expected {len(DATASET3_CLASSES)}, "
+            "Facial model output mismatch: "
+            f"expected {expected}, "
             f"got {output_count}."
         )
 
@@ -413,85 +566,19 @@ def load_dataset3_model() -> tf.keras.Model:
 
 def preprocess_image(image_path: str | Path) -> np.ndarray:
     """
-    Prepare an image using the same input preparation expected by
-    the final Dataset 3 EfficientNetB0 pipeline.
-
-    Training/evaluation input:
-        RGB
-        -> resize 224x224
-        -> float32
-        -> EfficientNetB0-compatible input
-        -> batch dimension
-
-    IMPORTANT:
-    Modern tf.keras EfficientNet models include their own input
-    rescaling/preprocessing behavior. Therefore we do NOT apply
-    MobileNetV2 preprocess_input and do NOT manually divide by 255
-    here.
-
-    The Colab training pipeline also used:
-        tf.keras.applications.efficientnet.preprocess_input()
-
-    which is effectively a pass-through for this EfficientNet
-    implementation.
+    Prepare an image exactly like the training notebook:
+    RGB -> optional face crop -> bilinear resize -> float32 0..255.
+    With TTA enabled in the metadata, a horizontally flipped copy is added
+    and predictions are averaged.
     """
-    path = Path(image_path)
-
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Image was not found at: {path}"
-        )
-
-    try:
-        with Image.open(path) as image:
-            image = image.convert("RGB")
-
-            image = image.resize(
-                IMAGE_SIZE,
-                Image.Resampling.BILINEAR,
-            )
-
-            image_array = np.asarray(
-                image,
-                dtype=np.float32,
-            )
-
-    except UnidentifiedImageError as exc:
-        raise ValueError(
-            "The uploaded file is not a valid image."
-        ) from exc
-
-    except OSError as exc:
-        raise ValueError(
-            "The uploaded image could not be opened."
-        ) from exc
-
-    if image_array.shape != (224, 224, 3):
-        raise ValueError(
-            "The image could not be converted to the required "
-            "RGB format."
-        )
-
-    # --------------------------------------------------------
-    # EfficientNetB0 preprocessing
-    # --------------------------------------------------------
-    #
-    # Do NOT use:
-    # tf.keras.applications.mobilenet_v2.preprocess_input()
-    #
-    # Do NOT manually do:
-    # image_array / 255.0
-    #
-    # EfficientNetB0's preprocessing behavior is included in
-    # the model used for this FYP.
-    # --------------------------------------------------------
-
-    image_array = np.expand_dims(
-        image_array,
-        axis=0,
+    config = facial_model_config()
+    return prepare_batch(
+        image_path,
+        config["image_size"],
+        face_crop=config["face_crop"],
+        face_margin=config["face_margin"],
+        tta=config["tta"],
     )
-
-    return image_array.astype(np.float32)
 
 
 # ============================================================
@@ -508,21 +595,38 @@ def predict_dataset3(
     """
     model = load_dataset3_model()
 
-    prediction = model.predict(
-        image_array,
-        verbose=0,
-    )
+    if not _inference_slots.acquire(
+        timeout=max(0.1, float(settings.inference_queue_timeout_seconds))
+    ):
+        raise InferenceBusyError(
+            "The analysis service is busy. Please try again shortly."
+        )
 
-    prediction_array = np.asarray(prediction)
+    try:
+        prediction = model.predict(
+            image_array,
+            verbose=0,
+        )
+    finally:
+        _inference_slots.release()
+
+    prediction_array = np.asarray(prediction, dtype=np.float64)
 
     if prediction_array.size == 0:
         raise ValueError(
             "Dataset 3 EfficientNetB0 model returned an empty prediction."
         )
 
+    # Average test-time-augmentation copies (batch axis).
+    if prediction_array.ndim == 2:
+        prediction_array = prediction_array.mean(axis=0)
+
     flat_prediction = prediction_array.reshape(-1)
 
-    if len(flat_prediction) < len(DATASET3_CLASSES):
+    config = facial_model_config()
+    classes = config["classes"]
+
+    if len(flat_prediction) < len(classes):
         raise ValueError(
             "Dataset 3 EfficientNetB0 model returned fewer outputs "
             "than expected."
@@ -531,13 +635,17 @@ def predict_dataset3(
     probabilities: dict[str, dict[str, float | bool]] = {}
     detected_conditions: list[str] = []
 
-    for index, condition in enumerate(DATASET3_CLASSES):
+    if float(np.max(flat_prediction[: len(classes)])) < config["abstain_below"]:
+        # Softmax models: the top class is not confident enough -> abstain.
+        return {"conditions": [], "probabilities": {}, "abstained": True}
+
+    for index, condition in enumerate(classes):
 
         probability = _clip_probability(
             flat_prediction[index]
         )
 
-        threshold = DATASET3_THRESHOLDS[condition]
+        threshold = config["thresholds"][condition]
 
         detected = probability >= threshold
 
@@ -549,6 +657,20 @@ def predict_dataset3(
 
         if detected:
             detected_conditions.append(condition)
+
+    # Softmax models: the most likely class is always reported (it already
+    # passed the abstain_below check); other classes only above their threshold.
+    if config["output"] == "softmax" and classes:
+        top = classes[int(np.argmax(flat_prediction[: len(classes)]))]
+        if top not in detected_conditions:
+            probabilities[top]["detected"] = True
+            detected_conditions = [top] + detected_conditions
+        else:
+            detected_conditions = [top] + [c for c in detected_conditions if c != top]
+        # Report at most the 3 most likely concerns, strongest first.
+        detected_conditions = [detected_conditions[0]] + sorted(
+            detected_conditions[1:], key=lambda c: -probabilities[c]["probability"]
+        )[:2]
 
     return {
         "conditions": detected_conditions,
@@ -573,7 +695,7 @@ def get_detected_conditions(
 
     for condition in dataset3_result.get("conditions", []):
 
-        if condition not in DATASET3_CLASSES:
+        if condition not in facial_model_config()["classes"]:
             continue
 
         if condition == "Normal Skin":
@@ -616,7 +738,7 @@ def _dataset3_severity_evidence(
         {},
     )
 
-    for condition in DATASET3_CLASSES:
+    for condition in facial_model_config()["classes"]:
 
         if condition == "Normal Skin":
             continue
@@ -767,7 +889,7 @@ def calculate_confidence(
     detected_probabilities: list[float] = []
     all_probabilities: list[float] = []
 
-    for condition in DATASET3_CLASSES:
+    for condition in facial_model_config()["classes"]:
 
         item = probabilities.get(condition)
 
@@ -940,6 +1062,19 @@ def analyze_skin_image(
         image_array
     )
 
+    # --------------------------------------------------------
+    # Safe abstention (SEC-ML-004): if no label - not even
+    # "Normal Skin" - reaches its validated threshold, the model
+    # has no confident answer for this image. Do not force one.
+    # --------------------------------------------------------
+    if not dataset3_result.get("conditions"):
+        return {
+            "status": "uncertain",
+            "conditions": [],
+            "model_version": facial_model_config()["model_version"],
+            "_internal": {"dataset3": dataset3_result},
+        }
+
     conditions_internal = get_detected_conditions(
         dataset3_result
     )
@@ -972,6 +1107,8 @@ def analyze_skin_image(
     # --------------------------------------------------------
 
     result = {
+        "status": "completed",
+        "model_version": facial_model_config()["model_version"],
         "conditions": user_conditions,
         "recommendations": recommendations,
         "confidence_score": confidence_score,

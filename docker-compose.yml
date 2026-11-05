@@ -1,0 +1,81 @@
+# Run all of Skyntri with one command:
+#     docker compose up --build
+# Frontend: http://localhost:5173    API: http://localhost:8000    Database: PostgreSQL 16 (service "db")
+#
+# Optional settings go in a ".env" file next to this file (see .env.docker.example).
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: skyntri-db
+    environment:
+      POSTGRES_DB: skyntri
+      POSTGRES_USER: skyntri
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skyntri-local-password}
+    volumes:
+      - skyntri-pg:/var/lib/postgresql/data
+    # Uncomment to connect with pgAdmin/DBeaver from your computer (localhost:5432)
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skyntri -d skyntri"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: skyntri-backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # "development" keeps local conveniences (API docs at /docs, reset links in the log).
+      # Use "production" + a strong SECRET_KEY + HTTPS origins for a real deployment.
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SECRET_KEY: ${SECRET_KEY:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # PostgreSQL (service "db" above). The password comes from .env (POSTGRES_PASSWORD).
+      DATABASE_URL: postgresql+psycopg://skyntri:${POSTGRES_PASSWORD:-skyntri-local-password}@db:5432/skyntri
+      UPLOAD_DIR: /data/uploads
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      MODEL_WARMUP: "true"
+      # Trained models: copy the files into backend/models/ (see ml/README.md).
+      # The defaults below match the notebook file names, so .env needs no change.
+      DATASET3_MODEL_PATH: ${DATASET3_MODEL_PATH:-models/facial_concerns_efficientnet.keras}
+      FACIAL_MODEL_METADATA_PATH: ${FACIAL_MODEL_METADATA_PATH:-models/facial_concerns_metadata.json}
+      DISEASE_SCREENING_ENABLED: ${DISEASE_SCREENING_ENABLED:-false}
+      DISEASE_MODEL_PATH: ${DISEASE_MODEL_PATH:-models/skin_disease_efficientnet.keras}
+      DISEASE_MODEL_METADATA_PATH: ${DISEASE_MODEL_METADATA_PATH:-models/skin_disease_metadata.json}
+      SKIN_GATE_MODEL_PATH: ${SKIN_GATE_MODEL_PATH:-models/skin_gate.keras}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    volumes:
+      # Uploaded images survive restarts (the database lives in skyntri-pg)
+      - skyntri-data:/data
+      # New trained models are picked up without rebuilding the image
+      - ./backend/models:/app/models:ro
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    container_name: skyntri-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  skyntri-data:
+  skyntri-pg:

@@ -1,3 +1,5 @@
+import logging
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -136,10 +138,13 @@ def generate_report(
         )
     except Exception as exc:
         db.rollback()
+        logging.getLogger("skyntri.reports").exception(
+            "report_generation_failed", extra={"event": "report_generation_failed"}
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Report generation failed: {str(exc)}",
+            detail="Report generation failed. Please try again.",
         ) from exc
 
     # ---------------------------------------------------------
@@ -215,8 +220,11 @@ def download_report(
             detail="Report file could not be found.",
         )
 
+    safe_title = re.sub(r"[^A-Za-z0-9 _.-]+", "", report.title or "").strip()[:80]
+
     return FileResponse(
         path=str(file_path),
         media_type="application/pdf",
-        filename=f"{report.title}.pdf",
+        filename=f"{safe_title or 'skyntri-report'}.pdf",
+        headers={"Cache-Control": "private, no-store"},
     )

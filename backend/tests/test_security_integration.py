@@ -44,11 +44,6 @@ def test_security_authentication_and_user_isolation(
         lambda: None,
     )
 
-    # Clear login lockout state
-    monkeypatch.setattr(
-        "app.routers.auth._failed_attempts",
-        {},
-    )
 
     try:
         with TestClient(app) as client:

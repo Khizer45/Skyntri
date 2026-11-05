@@ -39,7 +39,7 @@ export default function PredictionCard({
             </div>
           ) : (
             <h3 className="mt-1 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-              No specific visible problem detected
+              No supported facial concern detected
             </h3>
           )}
         </div>

@@ -1,3 +1,5 @@
+import { publishCartCount } from './cartEvents.js'
+
 // ---------------------------------------------------------------------------
 // Skyntri API service layer
 // ---------------------------------------------------------------------------
@@ -96,9 +98,24 @@ async function request(path, options = {}) {
   if (!response.ok) {
     let message = 'Request failed.'
 
+    let code = null
+    let guidance = []
+
     if (typeof data === 'object' && data !== null) {
       if (typeof data.detail === 'string') {
         message = data.detail
+      } else if (
+        data.detail &&
+        typeof data.detail === 'object' &&
+        !Array.isArray(data.detail)
+      ) {
+        // Structured errors, e.g. analysis abstentions:
+        // { code, status, message, guidance }
+        message = data.detail.message || message
+        code = data.detail.code || null
+        guidance = Array.isArray(data.detail.guidance)
+          ? data.detail.guidance
+          : []
       } else if (Array.isArray(data.detail)) {
         message = data.detail
           .map((item) => item.msg || 'Invalid request.')
@@ -110,10 +127,17 @@ async function request(path, options = {}) {
       message = data
     }
 
+    if (response.status === 401 && token) {
+      // Expired or revoked session: drop the stored token.
+      clearAuthToken()
+    }
+
     const error = new Error(message)
 
     error.status = response.status
     error.data = data
+    error.code = code
+    error.guidance = guidance
 
     throw error
   }
@@ -167,9 +191,17 @@ function mapAnalysis(data) {
 
     disclaimer: data?.disclaimer || '',
 
-    explanation: conditions.length
-      ? `The analysis identified these visible skin patterns: ${conditions.join(', ')}.`
-      : 'No specific visible skin problem was identified from this image.',
+    referral: Boolean(data?.referral),
+    summary: data?.summary || '',
+    track: data?.analysis_track || 'facial_concerns',
+    trackLabel: data?.analysis_track_label || 'Facial skin concerns',
+    modelVersion: data?.model_version || '',
+
+    explanation: data?.summary
+      ? data.summary
+      : conditions.length
+        ? `The analysis identified these visible skin patterns: ${conditions.join(', ')}.`
+        : 'No specific visible skin problem was identified from this image.',
 
     recommendations: {
       skincare: Array.isArray(recommendations.skincare)
@@ -396,7 +428,24 @@ export async function deleteAccount() {
 // Skin analysis
 // ---------------------------------------------------------------------------
 
-export async function analyzeSkin(imageFile) {
+export const ANALYSIS_TRACKS = [
+  {
+    id: 'facial_concerns',
+    label: 'Facial skin concerns',
+    description:
+      'Acne, blackheads, dark spots, pores, wrinkles, oiliness, dryness, redness and eye bags on the face.',
+    available: false,
+  },
+  {
+    id: 'disease_screening',
+    label: 'Skin disease screening support',
+    description:
+      'Conditions such as eczema or psoriasis on the face or body. Not available yet: it needs clinical review and independent validation first.',
+    available: false,
+  },
+]
+
+export async function analyzeSkin(imageFile, track = 'facial_concerns') {
   if (!imageFile) {
     throw new Error('Please select a skin image.')
   }
@@ -404,6 +453,7 @@ export async function analyzeSkin(imageFile) {
   const formData = new FormData()
 
   formData.append('file', imageFile)
+  formData.append('track', track)
 
   return mapAnalysis(
     await request('/analyses/analyze', {
@@ -760,5 +810,190 @@ export async function sendContactMessage(payload) {
   return request('/contact', {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+// ---------------------------------------------------------------------------
+// Analysis tracks (Model A / Model B availability comes from the backend)
+// ---------------------------------------------------------------------------
+
+export async function getAnalysisTracks() {
+  try {
+    const data = await request('/analyses/tracks', { method: 'GET' })
+    return Array.isArray(data) ? data : ANALYSIS_TRACKS
+  } catch {
+    return ANALYSIS_TRACKS
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shop
+// ---------------------------------------------------------------------------
+
+export function mapProduct(product) {
+  if (!product) return null
+  return {
+    ...product,
+    imageUrl: assetUrl(product.image_url),
+    priceCheckedAt: product.price_checked_at
+      ? new Date(product.price_checked_at).toLocaleDateString()
+      : null,
+  }
+}
+
+function toQuery(params = {}) {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '' && value !== false) {
+      query.set(key, value)
+    }
+  })
+  const text = query.toString()
+  return text ? `?${text}` : ''
+}
+
+export async function getProductMeta() {
+  return request('/products/meta', { method: 'GET' })
+}
+
+export async function searchProducts(params = {}) {
+  const data = await request(`/products${toQuery(params)}`, { method: 'GET' })
+  return { ...data, items: (data?.items || []).map(mapProduct) }
+}
+
+export async function getProduct(productId) {
+  return mapProduct(
+    await request(`/products/${encodeURIComponent(productId)}`, { method: 'GET' })
+  )
+}
+
+export async function getRecommendedProducts() {
+  const data = await request('/products/recommended', { method: 'GET' })
+  return { ...data, items: (data?.items || []).map(mapProduct) }
+}
+
+function mapCart(cart) {
+  publishCartCount(cart?.item_count || 0)
+  return {
+    ...cart,
+    items: (cart?.items || []).map((item) => ({ ...item, product: mapProduct(item.product) })),
+  }
+}
+
+export async function getCart() {
+  return mapCart(await request('/cart', { method: 'GET' }))
+}
+
+export async function addToCart(productId, quantity = 1) {
+  return mapCart(
+    await request('/cart/items', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId, quantity }),
+    })
+  )
+}
+
+export async function updateCartItem(itemId, quantity) {
+  return mapCart(
+    await request(`/cart/items/${encodeURIComponent(itemId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quantity }),
+    })
+  )
+}
+
+export async function removeCartItem(itemId) {
+  return mapCart(
+    await request(`/cart/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' })
+  )
+}
+
+export async function placeOrder(shipping) {
+  const order = await request('/orders', { method: 'POST', body: JSON.stringify(shipping) })
+  publishCartCount(0)
+  return order
+}
+
+export async function getOrders() {
+  return request('/orders', { method: 'GET' })
+}
+
+export async function cancelOrder(orderId) {
+  return request(`/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST' })
+}
+
+// ---------------------------------------------------------------------------
+// Shop administration (admin role required on the server)
+// ---------------------------------------------------------------------------
+
+export async function adminListProducts() {
+  const data = await request('/admin/products', { method: 'GET' })
+  return Array.isArray(data) ? data.map(mapProduct) : []
+}
+
+export async function adminCreateProduct(payload) {
+  return mapProduct(
+    await request('/admin/products', { method: 'POST', body: JSON.stringify(payload) })
+  )
+}
+
+export async function adminUpdateProduct(productId, payload) {
+  return mapProduct(
+    await request(`/admin/products/${encodeURIComponent(productId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+  )
+}
+
+export async function adminDeleteProduct(productId) {
+  await request(`/admin/products/${encodeURIComponent(productId)}`, { method: 'DELETE' })
+  return true
+}
+
+export async function adminUploadProductImage(productId, file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return mapProduct(
+    await request(`/admin/products/${encodeURIComponent(productId)}/image`, {
+      method: 'POST',
+      body: formData,
+    })
+  )
+}
+
+export async function adminListOrders(status = '') {
+  return request(`/admin/orders${toQuery({ status })}`, { method: 'GET' })
+}
+
+export async function adminUpdateOrderStatus(orderId, status) {
+  return request(`/admin/orders/${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Admin panel
+// ---------------------------------------------------------------------------
+
+export async function adminStats() {
+  return request('/admin/stats', { method: 'GET' })
+}
+
+export async function adminListUsers(q = '') {
+  return request(`/admin/users${toQuery({ q })}`, { method: 'GET' })
+}
+
+export async function adminUpdateUser(userId, payload) {
+  return request(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function adminUpdatePayment(orderId, paymentStatus) {
+  return request(`/admin/orders/${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ payment_status: paymentStatus }),
   })
 }

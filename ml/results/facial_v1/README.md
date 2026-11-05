@@ -66,7 +66,7 @@ A face was detected in 34 % of the images. The rest are skin close-ups and were 
 
 *Threshold* is the per-class probability above which a class is also reported as a second or third concern. It was tuned on validation, with precision ≥ 0.55.
 
-The summary metrics were copied from the notebook's section 10 output. The per-class table is `facial_concerns_per_class_metrics.csv`. The full metrics with 95 % bootstrap confidence intervals are stored in `facial_concerns_metadata.json`, next to the model.
+The summary metrics were copied from the notebook's section 10 output. The per-class table is `facial_concerns_per_class_metrics.csv`. The 95 % bootstrap confidence intervals from the original export were lost; re-run section 10 to get them again.
 
 ## Files in this folder
 
@@ -75,12 +75,13 @@ The summary metrics were copied from the notebook's section 10 output. The per-c
 | `training_log.csv` | Loss, accuracy, top-2 and val macro-F1 per epoch. Rows 1–6 are the head phase, rows 7–31 fine-tuning (the epoch counter restarts at 0) |
 | `facial_concerns_per_class_metrics.csv` | Per-class test metrics (table above) |
 | `facial_concerns_dataset_card.md` | Dataset card written by the notebook |
+| `facial_concerns_metadata.json` | The metadata the backend needs next to the `.keras` file (classes in output order, thresholds, image size, face crop, TTA, abstain level, test metrics). **Reconstructed:** the original export was deleted. Classes and their order come from the `y` column of `manifest_split.csv`, thresholds from the per-class CSV, settings from notebook 01. Bootstrap CIs are not included. Use it only with the `.keras` file from this run |
 | `manifest_split.csv` | Every image that was used: original path in Drive, source, label, duplicate group, MD5, perceptual hash, brightness, sharpness, face found, split. File names only, **no images** |
 
 Not included:
 * the images themselves: Kaggle licences, size;
 * `manifest_clean.pkl`: binary, and the same data as `manifest_split.csv`;
-* the `.keras` model file.
+* the `.keras` model file (~45 MB): keep it in Drive or a GitHub Release.
 
 ## Limitations
 

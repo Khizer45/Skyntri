@@ -1,0 +1,138 @@
+{
+  "task": "facial_concerns",
+  "model_version": "facial-concerns-efficientnetb3-v2",
+  "backbone": "EfficientNetB3",
+  "image_size": 300,
+  "output": "softmax",
+  "preprocessing": "RGB, face crop (Haar, margin), bilinear resize to image_size, float32 0-255 (no /255)",
+  "face_crop": {
+    "enabled": true,
+    "margin": 0.35
+  },
+  "tta": true,
+  "classes": [
+    "Blackheads",
+    "Acne",
+    "Dark Spots",
+    "Pores",
+    "Wrinkles",
+    "Skin Redness",
+    "Normal Skin"
+  ],
+  "display_names": {
+    "Blackheads": "Blackheads & Whiteheads",
+    "Acne": "Acne",
+    "Dark Spots": "Dark Spots",
+    "Pores": "Visible Pores",
+    "Wrinkles": "Fine Lines & Wrinkles",
+    "Skin Redness": "Skin Redness",
+    "Normal Skin": "Normal Skin"
+  },
+  "thresholds": {
+    "Blackheads": 0.5875115990638733,
+    "Acne": 0.4090743064880371,
+    "Dark Spots": 0.31379345059394836,
+    "Pores": 0.47063761949539185,
+    "Wrinkles": 0.3047259747982025,
+    "Skin Redness": 0.6945953369140625,
+    "Normal Skin": 0.4035871624946594
+  },
+  "abstain_below": 0.2,
+  "sha256": null,
+  "dataset_version": "2026-11-05",
+  "sources": [
+    "facial_skin_8class",
+    "normal",
+    "skin_issues"
+  ],
+  "split_sizes": {
+    "train": 3779,
+    "val": 756,
+    "test": 756
+  },
+  "test_metrics": {
+    "test_images": 756,
+    "accuracy": 0.9034,
+    "accuracy_without_tta": 0.9021,
+    "balanced_accuracy": 0.9113,
+    "macro_f1": 0.8993,
+    "weighted_f1": 0.9041,
+    "top2_accuracy": 0.9683,
+    "macro_roc_auc_ovr": 0.9886,
+    "coverage_after_abstention": 1.0,
+    "accuracy_on_answered": 0.9034
+  },
+  "per_class": [
+    {
+      "class": "Blackheads",
+      "support": 100,
+      "precision": 0.8108,
+      "recall/sensitivity": 0.9,
+      "specificity": 0.968,
+      "f1": 0.8531,
+      "roc_auc": 0.987,
+      "threshold": 0.5875
+    },
+    {
+      "class": "Acne",
+      "support": 247,
+      "precision": 0.9693,
+      "recall/sensitivity": 0.8947,
+      "specificity": 0.9862,
+      "f1": 0.9305,
+      "roc_auc": 0.9828,
+      "threshold": 0.4091
+    },
+    {
+      "class": "Dark Spots",
+      "support": 112,
+      "precision": 0.8246,
+      "recall/sensitivity": 0.8393,
+      "specificity": 0.9689,
+      "f1": 0.8319,
+      "roc_auc": 0.9737,
+      "threshold": 0.3138
+    },
+    {
+      "class": "Pores",
+      "support": 48,
+      "precision": 0.9231,
+      "recall/sensitivity": 1.0,
+      "specificity": 0.9944,
+      "f1": 0.96,
+      "roc_auc": 0.9996,
+      "threshold": 0.4706
+    },
+    {
+      "class": "Wrinkles",
+      "support": 97,
+      "precision": 0.9451,
+      "recall/sensitivity": 0.8866,
+      "specificity": 0.9924,
+      "f1": 0.9149,
+      "roc_auc": 0.9926,
+      "threshold": 0.3047
+    },
+    {
+      "class": "Skin Redness",
+      "support": 49,
+      "precision": 0.8113,
+      "recall/sensitivity": 0.8776,
+      "specificity": 0.9859,
+      "f1": 0.8431,
+      "roc_auc": 0.986,
+      "threshold": 0.6946
+    },
+    {
+      "class": "Normal Skin",
+      "support": 103,
+      "precision": 0.9439,
+      "recall/sensitivity": 0.9806,
+      "specificity": 0.9908,
+      "f1": 0.9619,
+      "roc_auc": 0.9984,
+      "threshold": 0.4036
+    }
+  ],
+  "notes": "AI estimate of the most visible facial skin-care concern. Not a diagnosis. Reconstructed after the original export was deleted: classes and order from the saved split (manifest_split.csv y column), thresholds from facial_concerns_per_class_metrics.csv, settings from notebook 01, test metrics from the notebook output. abstain_below 0.2 is what section 9 selects with the default settings when validation accuracy is above 0.85 (test coverage 1.0 in this run). Bootstrap confidence intervals were not recovered. Use only with the .keras file from the same run."
+}

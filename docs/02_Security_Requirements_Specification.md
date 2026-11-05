@@ -122,7 +122,7 @@ Each security requirement shall map to one or more automated tests or documented
 
 A release is blocked by any open Critical finding, any untested cross-user data access path, public exposure of private images/reports, default production secrets, reset-token leakage, or a model pipeline that confidently emits condition labels for known non-skin inputs.
 
-## Appendix — verification status (31 October 2026, branch `claude/focused-pascal-tt0k95`)
+## Appendix — verification status (31 October 2026)
 
 | Requirement(s) | Status | Evidence |
 |---|---|---|

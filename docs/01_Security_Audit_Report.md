@@ -1,7 +1,7 @@
 # Skyntri — Security & Deployment Audit Report (v1.1, remediation status)
 
 **Original audit:** 31 October 2026, commit `a2f08db` (static review of selected files).
-**This update:** 31 October 2026, branch `claude/focused-pascal-tt0k95`. Every finding was re-checked against the code at `a2f08db` before it was fixed.
+**This update:** 31 October 2026. Every finding was re-checked against the code at `a2f08db` before it was fixed.
 **Evidence:** automated tests in `backend/tests/` (68 passing locally with Python 3.13, see "Test evidence" below).
 
 > This is still **not** a penetration test, clinical validation or deployment certification. Items marked *Open* or *Partial* block a public launch.

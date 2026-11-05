@@ -10,7 +10,7 @@ Three notebooks, **not executed**. Each contains all the code: dataset download,
 
 Run them in this order: **01 → 02 → 03**. Notebook 03 reuses the cleaned skin images from 01 and 02 as its positive examples.
 
-Every code path was smoke-tested end to end on tiny synthetic images (no real data, 1 epoch, no pretrained weights). This checked that each cell runs and that the backend loads the exported files. Notebook 01 has been trained once (2026-11-05): test accuracy 0.903, macro-F1 0.899 on 756 held-out images. The results are in [`results/facial_v1/`](results/facial_v1/README.md). Notebooks 02 and 03 are not trained yet.
+Every code path was smoke-tested end to end on tiny synthetic images (no real data, 1 epoch, no pretrained weights). This checked that each cell runs and that the backend loads the exported files. Notebook 01 has been trained once (2026-11-05): test accuracy 0.903, macro-F1 0.899 on 756 held-out images. The results are in [`results/facial_v1/`](results/facial_v1/README.md). Notebook 02 has been trained once (2026-11-05): test accuracy 0.812, balanced accuracy 0.778, suspicious-lesion referral sensitivity 0.961 on 2,015 held-out images. The results are in [`results/disease_v1/`](results/disease_v1/README.md). Notebook 03 is not trained yet.
 
 The old facial model (`EfficientNetB0_weighted_focal_finetuned_best.keras`, trained on the noisy Roboflow multi-label set) has been **removed**. Until you copy a new model into `backend/models/`, *Skin Analysis → Facial skin concerns* shows "Not available yet" instead of giving wrong results.
 

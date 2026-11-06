@@ -1,0 +1,89 @@
+# Skyntri on a server, live on the internet with HTTPS.
+#
+#   1. cp .env.production.example .env      (fill in the domains and secrets)
+#   2. copy the trained model files into backend/models/
+#   3. docker compose -f docker-compose.prod.yml up -d --build
+#
+# Caddy is the only public service (ports 80/443). It gets free Let's Encrypt
+# certificates for SITE_DOMAIN (the app) and API_DOMAIN (the API) on its own.
+# Full guide: docs/DEPLOY_VPS.md
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: skyntri
+      POSTGRES_USER: skyntri
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - skyntri-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skyntri -d skyntri"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      DATABASE_URL: postgresql+psycopg://skyntri:${POSTGRES_PASSWORD}@db:5432/skyntri
+      UPLOAD_DIR: /data/uploads
+      CORS_ORIGINS: https://${SITE_DOMAIN:?set SITE_DOMAIN in .env}
+      FRONTEND_URL: https://${SITE_DOMAIN}
+      # The API is reachable only through Caddy, so the client IP that Caddy
+      # forwards can be trusted (rate limits then count real visitors).
+      FORWARDED_ALLOW_IPS: "*"
+      MODEL_WARMUP: "true"
+      DATASET3_MODEL_PATH: ${DATASET3_MODEL_PATH:-models/facial_concerns_efficientnet.keras}
+      FACIAL_MODEL_METADATA_PATH: ${FACIAL_MODEL_METADATA_PATH:-models/facial_concerns_metadata.json}
+      DISEASE_SCREENING_ENABLED: ${DISEASE_SCREENING_ENABLED:-false}
+      DISEASE_MODEL_PATH: ${DISEASE_MODEL_PATH:-models/skin_disease_efficientnet.keras}
+      DISEASE_MODEL_METADATA_PATH: ${DISEASE_MODEL_METADATA_PATH:-models/skin_disease_metadata.json}
+      SKIN_GATE_MODEL_PATH: ${SKIN_GATE_MODEL_PATH:-models/skin_gate.keras}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    volumes:
+      - skyntri-data:/data
+      - ./backend/models:/app/models:ro
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: https://${API_DOMAIN:?set API_DOMAIN in .env}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8-alpine
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  skyntri-data:
+  skyntri-pg:
+  caddy-data:
+  caddy-config:

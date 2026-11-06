@@ -1,0 +1,13 @@
+# HTTPS reverse proxy for Skyntri (used by docker-compose.prod.yml).
+# Caddy requests and renews Let's Encrypt certificates automatically, as long
+# as both domains point to this server and ports 80 and 443 are open.
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy backend:8000
+}

@@ -3,9 +3,11 @@
 These are the results of the first real training run of
 [`ml/notebooks/01_facial_skin_concerns_efficientnet.ipynb`](../../notebooks/01_facial_skin_concerns_efficientnet.ipynb) (Model A, *Skin Analysis → Facial skin concerns*).
 The run was on Google Colab (L4 GPU) on 2026-11-05.
-They cover **notebook 01 only**. The disease model (notebook 02) and the skin gate (notebook 03) are not trained yet.
+They cover **notebook 01 only**. The disease model (notebook 02) results are in [`../disease_v1/`](../disease_v1/README.md). The skin gate (notebook 03) results are in [`../gate_v1/`](../gate_v1/README.md).
 
 The model file (`facial_concerns_efficientnet.keras`, ~45 MB) is **not in git**. It lives in Google Drive under `MyDrive/skyntri/export/`. Copy it with `facial_concerns_metadata.json` into `backend/models/` (see [`ml/README.md`](../../README.md#4-where-to-save-the-trained-models-backend)).
+
+**The `.keras` file exported by this run must be repaired first.** It was exported with `build_model(weights=None)`, which drops a `Rescaling` layer of the ImageNet EfficientNet, so its predictions differ from the trained model. The trained weights are intact: `ml/tools/repair_efficientnet_export.py` restores the layer (see [`ml/README.md`](../../README.md#model-files-exported-before-the-fix-wrong-predictions)). The test numbers below were measured on the trained model in the notebook, so they apply to the repaired file.
 
 | Setting | Value |
 |---|---|

@@ -1,0 +1,7 @@
+class,support,sensitivity,specificity,PPV,NPV,f1,roc_auc
+Eczema / Atopic dermatitis,266,0.748,0.950,0.693,0.961,0.720,0.936
+Psoriasis / Lichen planus,212,0.632,0.966,0.687,0.957,0.658,0.946
+Fungal infection,193,0.725,0.970,0.718,0.971,0.722,0.945
+Viral infection (warts / molluscum),191,0.806,0.972,0.751,0.980,0.778,0.968
+Benign-appearing lesion,592,0.791,0.982,0.947,0.918,0.862,0.978
+Suspicious lesion,561,0.966,0.933,0.848,0.986,0.903,0.987

@@ -12,6 +12,7 @@ Set these in the hosting platform's secret/config store, or in `backend/.env` fo
 | `JWT_ISSUER` / `JWT_AUDIENCE` | `skyntri-api` / `skyntri-web` | keep | Validated claims |
 | `ADMIN_EMAILS` | *(empty)* | support staff | Comma-separated e-mails granted the admin role at register/login. Alternative: `python -m app.cli make-admin EMAIL` |
 | `DATABASE_URL` | `sqlite:///./skyntri.db` (Docker: the `db` PostgreSQL service) | `postgresql+psycopg://user:pass@host:5432/skyntri` | SQLAlchemy URL. PostgreSQL 16 is the supported production database |
+| `SITE_DOMAIN` / `API_DOMAIN` | — | **required** for `docker-compose.prod.yml` | Public names of the app and the API (no `https://`). They set `CORS_ORIGINS`, `FRONTEND_URL` and `VITE_API_URL`, and Caddy gets HTTPS certificates for them |
 | `POSTGRES_PASSWORD` | `skyntri-local-password` | **required**, long random value | Docker Compose only: password of the bundled PostgreSQL service. Set it before the first `docker compose up`; changing it later needs the `skyntri-pg` volume to be reset |
 | `AUTO_MIGRATE` | `true` | `false` (entrypoint runs migrations) | Run Alembic at app start-up |
 | `CORS_ORIGINS` | localhost:5173 | `https://<frontend>` | Comma-separated; `*` refused in production |

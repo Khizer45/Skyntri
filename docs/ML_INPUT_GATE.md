@@ -62,7 +62,20 @@ v2 deliberately trades some non-skin false accepts for far fewer wrongly rejecte
 * Known false accepts: close-ups of orange/brown fur, wood and food with skin-like colours.
 * Grayscale skin photos are rejected (by design, the model needs colour).
 
-## Replacing it with a trained gate (required before launch)
+## Trained gate (v1, 2026-11-06)
+
+The trained gate replaces the rules as soon as `skin_gate.keras` and `skin_gate_metadata.json` are in `backend/models/`. Results on 3,035 held-out images ([`ml/results/gate_v1/`](../ml/results/gate_v1/README.md)):
+
+| Metric | Value |
+|---|---|
+| ROC-AUC | 0.9996 |
+| Non-skin photos accepted | 0.62 % (95 % CI 0.30–1.27 %) |
+| Skin photos rejected | 0.58 % (95 % CI 0.32–1.03 %) |
+| Uncertain | 0.10 % |
+
+Thresholds from validation: accept at P(skin) ≥ 0.673, reject below 0.606. Still to do before launch: test on real phone uploads and add screenshots and documents as hard negatives (step 1 below).
+
+## How the trained gate is built
 
 `ml/notebooks/03_skin_gate_efficientnet.ipynb` does steps 1–4: positives are the cleaned images from notebooks 01 and 02, negatives are COCO 2017 photos without people, DTD textures and your own `extra_negatives/`. It exports `skin_gate.keras` + `skin_gate_metadata.json` (accept/reject thresholds at 1 % false accept and 1 % skin rejection on validation). Copy both into `backend/models/`; the thresholds in the metadata override `SKIN_GATE_ACCEPT_THRESHOLD` / `SKIN_GATE_REJECT_THRESHOLD`.
 

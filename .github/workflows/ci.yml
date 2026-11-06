@@ -118,3 +118,35 @@ jobs:
       - name: Logs
         if: always()
         run: docker compose logs --tail 80
+
+  prod-stack:
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the production stack (Caddy uses local certificates for *.localhost)
+        run: |
+          cat > .env <<EOF
+          SITE_DOMAIN=localhost
+          API_DOMAIN=api.localhost
+          ADMIN_EMAILS=admin@example.com
+          SECRET_KEY=$(openssl rand -hex 32)
+          POSTGRES_PASSWORD=$(openssl rand -hex 24)
+          EOF
+          docker compose -f docker-compose.prod.yml up -d --build
+      - name: Smoke test through Caddy over HTTPS
+        run: |
+          R="--resolve localhost:443:127.0.0.1 --resolve api.localhost:443:127.0.0.1"
+          for i in $(seq 1 80); do curl -kfsS $R https://api.localhost/health && break; sleep 3; done
+          curl -kfsS $R https://api.localhost/health/ready || true
+          curl -kfsS $R -o /dev/null -w "frontend %{http_code}\n" https://localhost/
+          curl -kfsS $R -o /dev/null -w "spa route %{http_code}\n" https://localhost/skin-analysis
+          curl -kfsS $R https://localhost/ | grep -o "connect-src 'self' https://api.localhost"
+          curl -kfsS $R -X OPTIONS -H "Origin: https://localhost" -H "Access-Control-Request-Method: POST" \
+            -D - -o /dev/null https://api.localhost/auth/login | grep -i "access-control-allow-origin: https://localhost"
+          curl -kfsS $R -H "Content-Type: application/json" \
+            -d '{"full_name":"CI Admin","email":"admin@example.com","password":"TestPassword123!"}' \
+            https://api.localhost/auth/register | grep -o '"role":"admin"'
+      - name: Logs
+        if: always()
+        run: docker compose -f docker-compose.prod.yml logs --tail 80

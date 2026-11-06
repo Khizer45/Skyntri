@@ -70,7 +70,7 @@ Tests: `cd backend && pytest -q`. See [backend/README.md](backend/README.md) and
 
 ## v1.2 additions
 
-* **ML notebooks** in [`ml/`](ml/README.md): Colab notebooks for Model A (facial concerns) and Model B (skin disease screening). They cover dataset loading, cleaning, augmentation, EfficientNet training, evaluation metrics, export and prediction. Model A and Model B have been trained once; the results are in [`ml/results/facial_v1/`](ml/results/facial_v1/README.md) and [`ml/results/disease_v1/`](ml/results/disease_v1/README.md). The skin gate (notebook 03) is not trained yet. See [ml/README.md](ml/README.md#4-where-to-save-the-trained-models-backend) for where the trained files go.
+* **ML notebooks** in [`ml/`](ml/README.md): Colab notebooks for Model A (facial concerns), Model B (skin disease screening) and the skin gate. They cover dataset loading, cleaning, augmentation, EfficientNet training, evaluation metrics, export and prediction. All three models have been trained once; the results are in [`ml/results/facial_v1/`](ml/results/facial_v1/README.md), [`ml/results/disease_v1/`](ml/results/disease_v1/README.md) and [`ml/results/gate_v1/`](ml/results/gate_v1/README.md). See [ml/README.md](ml/README.md#4-where-to-save-the-trained-models-backend) for where the trained files go.
 * **Model B plug-in:** the backend loads the exported disease model when `DISEASE_SCREENING_ENABLED=true`. Referral comes first, it abstains when unsure, and it never gives an all-clear.
 * **Shop:** search products by the ingredients they contain or avoid, get suggestions from your latest facial analysis, then use the cart and cash-on-delivery orders. Admins create, edit and delete products (with images) and manage orders.
 

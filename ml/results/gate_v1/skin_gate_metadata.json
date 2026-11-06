@@ -1,0 +1,115 @@
+{
+  "task": "skin_gate",
+  "image_size": 224,
+  "output": "sigmoid P(skin)",
+  "accept_threshold": 0.6731969118118286,
+  "reject_threshold": 0.6059752106666565,
+  "sha256": "76f17c7b6296779cd5705b05c843c65df23fbd57177f39465a101b12bdfd5ebf",
+  "test_metrics": {
+    "roc_auc": 0.9995823413360627,
+    "non_skin_false_accept_rate": 0.006161971830985915,
+    "non_skin_false_accept_ci95": [
+      0.003,
+      0.0127
+    ],
+    "skin_rejection_rate": 0.005792522380200105,
+    "skin_rejection_ci95": [
+      0.0032,
+      0.0103
+    ],
+    "skin_accepted_rate": 0.9936808846761453,
+    "uncertain_rate": 0.0009884678747940692
+  },
+  "per_category": [
+    {
+      "category": "skin:disease",
+      "n": 1142,
+      "accepted_as_skin": 0.9956,
+      "uncertain": 0.0
+    },
+    {
+      "category": "skin:facial",
+      "n": 757,
+      "accepted_as_skin": 0.9908,
+      "uncertain": 0.0013
+    },
+    {
+      "category": "coco:furniture",
+      "n": 66,
+      "accepted_as_skin": 0.0152,
+      "uncertain": 0.0
+    },
+    {
+      "category": "dtd:texture",
+      "n": 807,
+      "accepted_as_skin": 0.0074,
+      "uncertain": 0.0025
+    },
+    {
+      "category": "coco:appliance",
+      "n": 22,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:animal",
+      "n": 80,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:accessory",
+      "n": 6,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:indoor",
+      "n": 23,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:food",
+      "n": 30,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:electronic",
+      "n": 19,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:kitchen",
+      "n": 7,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:sports",
+      "n": 3,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:scene",
+      "n": 6,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:outdoor",
+      "n": 26,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    },
+    {
+      "category": "coco:vehicle",
+      "n": 41,
+      "accepted_as_skin": 0.0,
+      "uncertain": 0.0
+    }
+  ]
+}

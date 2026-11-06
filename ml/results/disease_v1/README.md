@@ -3,7 +3,7 @@
 These are the results of the first real training run of
 [`ml/notebooks/02_skin_disease_screening_efficientnet.ipynb`](../../notebooks/02_skin_disease_screening_efficientnet.ipynb) (Model B, *Skin Analysis → Skin disease screening*).
 The run was on Google Colab (L4 GPU) on 2026-11-05.
-They cover **notebook 02 only**. Facial concerns (notebook 01) are in [`../facial_v1/`](../facial_v1/README.md). The skin gate (notebook 03) is not trained yet.
+They cover **notebook 02 only**. Facial concerns (notebook 01) are in [`../facial_v1/`](../facial_v1/README.md). The skin gate (notebook 03) results are in [`../gate_v1/`](../gate_v1/README.md).
 
 The model file (`skin_disease_efficientnet.keras`) is **not in git**. It lives in Google Drive under `MyDrive/skyntri/export/`. Copy it with `skin_disease_metadata.json` into `backend/models/` (see [`ml/README.md`](../../README.md#4-where-to-save-the-trained-models-backend)).
 

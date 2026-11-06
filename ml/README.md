@@ -10,7 +10,7 @@ Three notebooks, **not executed**. Each contains all the code: dataset download,
 
 Run them in this order: **01 → 02 → 03**. Notebook 03 reuses the cleaned skin images from 01 and 02 as its positive examples.
 
-Every code path was smoke-tested end to end on tiny synthetic images (no real data, 1 epoch, no pretrained weights). This checked that each cell runs and that the backend loads the exported files. Notebook 01 has been trained once (2026-11-05): test accuracy 0.903, macro-F1 0.899 on 756 held-out images. The results are in [`results/facial_v1/`](results/facial_v1/README.md). Notebook 02 has been trained once (2026-11-05): test accuracy 0.812, balanced accuracy 0.778, suspicious-lesion referral sensitivity 0.961 on 2,015 held-out images. The results are in [`results/disease_v1/`](results/disease_v1/README.md). Notebook 03 is not trained yet.
+Every code path was smoke-tested end to end on tiny synthetic images (no real data, 1 epoch, no pretrained weights). This checked that each cell runs and that the backend loads the exported files. Notebook 01 has been trained once (2026-11-05): test accuracy 0.903, macro-F1 0.899 on 756 held-out images. The results are in [`results/facial_v1/`](results/facial_v1/README.md). Notebook 02 has been trained once (2026-11-05): test accuracy 0.812, balanced accuracy 0.778, suspicious-lesion referral sensitivity 0.961 on 2,015 held-out images. The results are in [`results/disease_v1/`](results/disease_v1/README.md). Notebook 03 has been trained once (2026-11-06): ROC-AUC 0.9996, 0.6 % of non-skin photos accepted and 0.6 % of skin photos rejected on 3,035 held-out images. The results are in [`results/gate_v1/`](results/gate_v1/README.md).
 
 The old facial model (`EfficientNetB0_weighted_focal_finetuned_best.keras`, trained on the noisy Roboflow multi-label set) has been **removed**. Until you copy a new model into `backend/models/`, *Skin Analysis → Facial skin concerns* shows "Not available yet" instead of giving wrong results.
 
@@ -43,7 +43,7 @@ The 6 app classes: *Eczema / Atopic dermatitis*, *Psoriasis / Lichen planus*, *F
 
 | Role | Dataset | Link |
 |---|---|---|
-| Skin (positive) | The cleaned images from notebooks 01 and 02 | read from `work/facial` and `work/disease` |
+| Skin (positive) | The cleaned images from notebooks 01 and 02 | read from `work/facial` and `work/disease`; if `work/disease` is gone, up to 8,000 original images from `datasets/disease` |
 | Not skin | COCO 2017 validation photos **without people** (phones, laptops, food, rooms, animals…) | https://cocodataset.org/#download · http://images.cocodataset.org/zips/val2017.zip · http://images.cocodataset.org/annotations/annotations_trainval2017.zip |
 | Not skin (textures) | DTD, Describable Textures Dataset | https://www.robots.ox.ac.uk/~vgg/data/dtd/download/dtd-r1.0.1.tar.gz |
 | Not skin (optional) | Your own screenshots, documents, wrong uploads | folder `extra_negatives/` |

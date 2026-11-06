@@ -1,6 +1,6 @@
 # Skyntri — AI-Based Skin Health Assistant
 
-Final Year Project (MUST, Dept. of Software Engineering).
+
 React + Vite frontend, FastAPI backend with PostgreSQL, EfficientNet skin models (trained by you on Colab from `ml/notebooks/`), Tesseract OCR ingredient scanner, OpenCV progress comparison, PDF reports, an AI assistant, an ingredient-based shop and an admin panel.
 
 > Skyntri gives AI estimates for skin-care information. It is **not** a medical diagnosis tool.

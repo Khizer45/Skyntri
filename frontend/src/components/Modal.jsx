@@ -18,7 +18,7 @@ export default function Modal({ open, onClose, title, children, footer, wide = f
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className={`relative w-full ${wide ? 'max-w-2xl max-h-[90vh] overflow-y-auto' : 'max-w-md'} rounded-xl border border-neutral-200 bg-white p-5 shadow-lg dark:border-neutral-800 dark:bg-panel-dark animate-in fade-in zoom-in-95 duration-150`}>
+      <div className={`relative w-full ${wide ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-5 shadow-float dark:border-white/10 dark:bg-panel-dark animate-in fade-in zoom-in-95 duration-150`}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
           <button

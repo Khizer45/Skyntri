@@ -2,6 +2,7 @@ import { Eye, EyeOff, LogIn } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Button from '../components/Button.jsx'
+import GoogleButton from '../components/GoogleButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import AuthLayout from '../layouts/AuthLayout.jsx'
@@ -14,7 +15,7 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const { login } = useAuth()
+  const { login, loginWithGoogle } = useAuth()
   const { showToast } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
@@ -40,6 +41,19 @@ export default function Login() {
 
   return (
     <AuthLayout title="Welcome back" subtitle="Log in to continue to your skin health dashboard">
+      <GoogleButton
+        onError={setError}
+        onCredential={async (credential) => {
+          setError('')
+          try {
+            await loginWithGoogle(credential)
+            showToast('Welcome back to Skyntri.', 'success')
+            navigate('/dashboard', { replace: true })
+          } catch (err) {
+            setError(err.message || 'Google sign-in failed.')
+          }
+        }}
+      />
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div>
           <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">

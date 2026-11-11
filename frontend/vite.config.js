@@ -12,12 +12,15 @@ function cspPlugin(apiUrl) {
     apiOrigin = ''
   }
 
+  // accounts.google.com entries are for the optional "Continue with Google"
+  // button (Google Identity Services).
   const policy = [
     "default-src 'self'",
-    "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "script-src 'self' https://accounts.google.com/gsi/client",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
     `img-src 'self' data: blob: ${apiOrigin}`.trim(),
-    `connect-src 'self' ${apiOrigin}`.trim(),
+    `connect-src 'self' ${apiOrigin} https://accounts.google.com/gsi/`.trim(),
+    "frame-src https://accounts.google.com/gsi/",
     "font-src 'self' data: https://fonts.gstatic.com",
     "object-src 'none'",
     "base-uri 'self'",

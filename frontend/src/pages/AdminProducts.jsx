@@ -7,7 +7,7 @@ import { Spinner } from '../components/LoadingState.jsx'
 import Modal from '../components/Modal.jsx'
 import { formatPrice } from '../components/ProductCard.jsx'
 import { useToast } from '../context/ToastContext.jsx'
-import DashboardLayout from '../layouts/DashboardLayout.jsx'
+import AdminLayout from '../layouts/AdminLayout.jsx'
 import * as api from '../services/api.js'
 
 const inputClass =
@@ -140,7 +140,7 @@ export default function AdminProducts() {
   }
 
   return (
-    <DashboardLayout title="Products" subtitle="Add, edit and remove shop products">
+    <AdminLayout title="Products">
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-neutral-600 dark:text-neutral-300">
           Add products with their full ingredient list, real price and where the price came from.
@@ -276,6 +276,6 @@ export default function AdminProducts() {
       >
         {deleting && <p>“{deleting.name}” will be removed from the shop and from carts. Past orders keep their details.</p>}
       </Modal>
-    </DashboardLayout>
+    </AdminLayout>
   )
 }

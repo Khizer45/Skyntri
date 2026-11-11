@@ -485,6 +485,9 @@ class ChatRequest(BaseModel):
         max_length=2000,
     )
 
+    # Language of the answer. "auto" follows the language of the question.
+    language: Literal["auto", "en", "ur", "roman_ur"] = "auto"
+
 
 class ChatMessageOut(BaseModel):
     model_config = ConfigDict(
@@ -494,4 +497,9 @@ class ChatMessageOut(BaseModel):
     id: str
     role: str
     content: str
+    image_url: str | None = None
     created_at: datetime
+
+    @field_serializer("image_url")
+    def _sign_image(self, value: str | None) -> str | None:
+        return signed_url(value)

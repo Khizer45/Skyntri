@@ -50,6 +50,7 @@ ALLOWED_SUBFOLDERS = {
     "ingredients_scans",
     "reports",
     "products",
+    "chat_images",
 }
 
 # Folders whose files are public catalogue content (product photos), served
@@ -203,6 +204,37 @@ def save_upload(file: UploadFile, subfolder: str) -> str:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The image upload could not be completed.",
+        ) from exc
+
+    return f"{INTERNAL_PREFIX}{safe_subfolder}/{final_path.name}"
+
+
+def save_image_bytes(data: bytes, subfolder: str) -> str:
+    """
+    Store image bytes produced by the server (e.g. a generated illustration)
+    with the same validation and private storage as uploads.
+    """
+    if not data or len(data) > settings.max_upload_bytes:
+        raise _bad_request("The image could not be stored.")
+
+    safe_subfolder = _validate_subfolder(subfolder)
+    dest_dir = settings.upload_path / safe_subfolder
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    temp_path = dest_dir / f".tmp-{uuid.uuid4().hex}"
+    try:
+        temp_path.write_bytes(data)
+        image_format = validate_image_file(temp_path)
+        final_path = dest_dir / f"{uuid.uuid4().hex}{ALLOWED_FORMATS[image_format]}"
+        temp_path.replace(final_path)
+    except HTTPException:
+        _safe_unlink(temp_path)
+        raise
+    except Exception as exc:
+        _safe_unlink(temp_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The image could not be stored.",
         ) from exc
 
     return f"{INTERNAL_PREFIX}{safe_subfolder}/{final_path.name}"

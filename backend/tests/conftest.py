@@ -44,6 +44,8 @@ def api(tmp_path, monkeypatch):
     # Model files are not in the repository; API tests use fakes for inference.
     monkeypatch.setattr("app.routers.analyses.model_artifact_available", lambda: True)
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    # Webhooks are delivered in the request thread so tests can assert on them.
+    monkeypatch.setattr("app.services.automation.DELIVERY_MODE", "inline")
 
     try:
         with TestClient(app) as client:

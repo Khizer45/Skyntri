@@ -103,8 +103,7 @@ _PRESCRIPTION_PATTERNS = [
 # ============================================================================
 
 _SYSTEM_INSTRUCTIONS = """
-You are Skyntri, an AI skincare assistant inside a student FYP called
-"Skyntri – AI-Based Skin Health Assistant".
+You are Skyntri, the AI skincare assistant of an online skin clinic.
 
 Your role is to provide helpful, conservative, easy-to-understand GENERAL
 skincare information.
@@ -151,7 +150,54 @@ Important rules:
     explanation. Give a complete but reasonably concise answer.
 22. Do not repeat the user's question unnecessarily. Move directly into the
     useful answer.
+23. Format answers in Markdown. Use a Markdown table when the user asks for
+    a table, a comparison, a schedule or a morning/evening routine. Do not
+    use HTML.
+24. Answer in the language the user writes in (English, Urdu, or Roman
+    Urdu) unless a reply language is given below.
+25. When a problem needs a doctor, say that the user can book a
+    dermatologist under "Doctors" in this app.
 """
+
+REPLY_LANGUAGES = {
+    "en": "English",
+    "ur": "Urdu, written in Urdu script",
+    "roman_ur": "Roman Urdu (Urdu written with Latin letters)",
+}
+
+
+def _system_instructions(language: str | None) -> str:
+    text = _SYSTEM_INSTRUCTIONS.strip()
+    if language in REPLY_LANGUAGES:
+        text += f"\n\nReply language: {REPLY_LANGUAGES[language]}."
+    return text
+
+
+# ============================================================================
+# Illustration requests
+# ============================================================================
+
+_IMAGE_REQUEST = re.compile(
+    r"\b(make|create|generate|draw|design|show|give|bana\w*|dikha\w*)\b.{0,40}"
+    r"\b(ima?ge|picture|photo|pic|illustration|infographic|drawing|poster|diagram|tasveer|tasweer)\b",
+    re.IGNORECASE,
+)
+
+
+def is_image_request(message: str) -> bool:
+    return bool(_IMAGE_REQUEST.search(message or ""))
+
+
+def build_image_prompt(message: str) -> str:
+    """Wrap the user's wish in fixed rules so only clinic-appropriate images are made."""
+    wish = " ".join((message or "").split())[:400]
+    return (
+        "Create a clean, friendly, flat-style educational illustration for a skin-care clinic app. "
+        "Soft neutral colours, plenty of white space, no brand names or logos. "
+        "Do not show real or recognisable people, nudity, wounds, blood or frightening medical imagery. "
+        "Keep any text in the image very short. "
+        f"Subject requested by the user: {wish}"
+    )
 
 
 # ============================================================================
@@ -211,10 +257,15 @@ def _recent_context(history: list[dict]) -> str:
 
 def _routine_response() -> str:
     return (
-        "A simple skincare routine is a good starting point: use a gentle "
-        "cleanser, moisturizer, and broad-spectrum SPF 30+ during the day. "
-        "If you introduce an active ingredient, start gradually and avoid "
-        "adding several new actives at the same time."
+        "A simple routine is the best starting point:\n\n"
+        "| Step | Morning | Evening |\n"
+        "|---|---|---|\n"
+        "| 1. Cleanse | Gentle cleanser | Gentle cleanser |\n"
+        "| 2. Treat (optional) | - | One active, a few nights a week |\n"
+        "| 3. Moisturise | Light moisturiser | Moisturiser |\n"
+        "| 4. Protect | Broad-spectrum SPF 30+ | - |\n\n"
+        "Introduce one new product at a time and give it a few weeks. "
+        "Avoid starting several strong actives together."
     )
 
 
@@ -744,6 +795,7 @@ def _generate_gemini_reply(
     message: str,
     history: list[dict],
     user_context: dict | None,
+    language: str | None = None,
 ) -> str | None:
     """
     Generate through Gemini.
@@ -773,7 +825,7 @@ def _generate_gemini_reply(
         "systemInstruction": {
             "parts": [
                 {
-                    "text": _SYSTEM_INSTRUCTIONS.strip(),
+                    "text": _system_instructions(language),
                 }
             ]
         },
@@ -834,6 +886,7 @@ def get_assistant_reply(
     message: str,
     history: list[dict] | None = None,
     user_context: dict | None = None,
+    language: str | None = None,
 ) -> str:
     """
     Generate a safe Skyntri assistant response.
@@ -886,6 +939,7 @@ def get_assistant_reply(
         message=message,
         history=history,
         user_context=user_context,
+        language=language,
     )
 
     # ------------------------------------------------------------------------

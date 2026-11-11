@@ -1,7 +1,8 @@
-# Skyntri — AI-Based Skin Health Assistant
+# Skyntri — Online skin clinic
 
+AI skin analysis, an assistant, dermatologist appointments with prescriptions, an ingredient scanner and an ingredient-based shop.
 
-React + Vite frontend, FastAPI backend with PostgreSQL, EfficientNet skin models (trained by you on Colab from `ml/notebooks/`), Tesseract OCR ingredient scanner, OpenCV progress comparison, PDF reports, an AI assistant, an ingredient-based shop and an admin panel.
+Built with a React + Vite frontend and a FastAPI backend on PostgreSQL. The skin models are EfficientNet networks trained on Colab from `ml/notebooks/`. Also inside: Tesseract OCR for ingredient labels, OpenCV progress comparison, PDF reports, online payments, automation webhooks with built-in agents, and an admin panel.
 
 > Skyntri gives AI estimates for skin-care information. It is **not** a medical diagnosis tool.
 
@@ -9,6 +10,7 @@ React + Vite frontend, FastAPI backend with PostgreSQL, EfficientNet skin models
 backend/    FastAPI API, migrations, tests, Dockerfile; backend/models/ holds the trained models
 frontend/   React/Vite single-page app
 ml/         Colab notebooks: dataset cleaning, training, evaluation, export (see ml/README.md)
+automation/ ready-made n8n workflows (see docs/INTEGRATIONS.md)
 docs/       security audit, requirements, runbook, model card, test plan
 ```
 
@@ -60,6 +62,19 @@ npm run dev
 ```
 
 Tests: `cd backend && pytest -q`. See [backend/README.md](backend/README.md) and [docs/](docs/README.md).
+
+## v2.0: online clinic
+
+* **Dermatologists:** doctors apply, an administrator checks the licence and approves. Patients book a free time, can share a skin analysis, message the doctor and download the prescription as a PDF. Doctors get a portal with their appointments, patients, working hours and a prescription editor.
+* **Accounts:** name, mobile number, e-mail and password under Settings; optional "Continue with Google".
+* **Payments:** card (Stripe) and PayPal for orders and consultation fees, next to cash on delivery. The customer pays on the provider's page; card numbers never reach Skyntri.
+* **Assistant:** chat layout with Markdown tables, voice input, read-aloud, answers in English, Urdu or Roman Urdu, and optional illustrations.
+* **Camera:** take the photo in the browser instead of uploading a file.
+* **Agents and automation:** daily clinic report, appointment reminders and a daily skin-care post; signed webhooks and an API-key API for n8n, Zapier or your own agents; two n8n workflows included.
+* **Admin:** doctors, appointments, automation, an audit log, and switches that work without a restart (for example skin disease screening).
+* **New look:** calm, minimal theme in light and dark.
+
+Every outside service is optional and off until its key is set: see [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
 ## What changed in v1.1 (production-readiness pass)
 

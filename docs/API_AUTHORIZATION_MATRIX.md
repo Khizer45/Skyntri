@@ -36,6 +36,27 @@ Legend: **Public** = no token. **User** = valid access token; data is always fil
 | `GET /admin/orders`, `PATCH /admin/orders/{id}` | **Admin** | Order status and payment status (`unpaid → paid → refunded`) transitions are validated; cancelling restocks | — |
 | `GET /admin/stats` | **Admin** | Aggregate counts and payment totals only | — |
 | `GET /admin/users`, `PATCH /admin/users/{id}` | **Admin** | Change role (`user`/`admin`) or deactivate; an admin cannot demote or deactivate themselves | — |
+| `POST /auth/google` | Public | Google ID token verified on the server (signature, audience, issuer, expiry, verified e-mail); 503 when `GOOGLE_CLIENT_ID` is empty | 50 per 15 min per IP |
+| `POST /auth/set-password` | User | Only for accounts created with Google that have no password yet | — |
+| `POST /profile/email` | User | Current password required; refused for Google-linked accounts and for addresses in `ADMIN_EMAILS` | 5/h per user |
+| `GET /config` | Public | Clinic name, currency, time zone, Google client ID (public by design) | — |
+| `GET /chat/capabilities` | User | Which assistant features are configured | — |
+| `GET /doctors`, `/doctors/{id}`, `/doctors/{id}/slots` | User | Approved, active doctors only; licence number and e-mail are not included | — |
+| `POST /doctors/apply`, `GET/PUT /doctors/me`, `PUT /doctors/me/availability` | User | Own doctor profile only; a new application is `pending` until an admin approves | 5 applications/day |
+| `POST /appointments` | User | Books for the caller only; the time must be a free slot of the doctor; a shared analysis must belong to the caller; double booking is blocked by a unique slot lock | 6 bookings/day per user |
+| `GET /appointments`, `/appointments/{id}`, `POST /appointments/{id}/cancel` | User | The patient of the appointment (404 otherwise); the treating doctor can also read it | — |
+| `GET/POST /appointments/{id}/messages`, `GET /appointments/{id}/prescription.pdf` | User | Patient or treating doctor of that appointment only (404 otherwise) | 120 messages/h per user |
+| `GET /doctor/appointments`, `PATCH /doctor/appointments/{id}`, `PUT /doctor/appointments/{id}/prescription`, `GET /doctor/patients` | **Doctor** (approved profile and `doctor` role, checked on every request) | Own appointments and own patients only; status changes follow `requested → confirmed → completed/no_show`; private notes are never returned to the patient or an admin | — |
+| `GET /admin/doctors`, `PATCH /admin/doctors/{id}` | **Admin** | Approve, reject, suspend; the `doctor` role follows the approval | — |
+| `GET /admin/appointments`, `PATCH /admin/appointments/{id}/payment` | **Admin** | No private notes, messages or shared photo; payment `unpaid → paid → refunded` | — |
+| `GET /payments/methods`, `POST /payments/checkout` | User | Own unpaid order or appointment only; the amount comes from the database | 20 checkouts/h per user |
+| `POST /payments/{id}/confirm`, `POST /payments/{id}/cancel` | User | Own payment only; the result is read from the provider, not from the browser | 60/h per user |
+| `POST /payments/stripe/webhook` | **Stripe signature** | HMAC-SHA256 with `STRIPE_WEBHOOK_SECRET`, 5-minute tolerance; the session is re-read from Stripe before anything is marked paid | — |
+| `GET /admin/payments` | **Admin** | Provider references and amounts; no card data exists | — |
+| `GET/PUT /admin/settings`, `GET /admin/audit` | **Admin** | Run-time switches (disease screening, auto-publish); every change is audited | — |
+| `/admin/automation…`, `/admin/posts…` | **Admin** | API keys (shown once, stored hashed), webhooks (URL checked against private addresses), agents, clinic posts | — |
+| `GET /posts` | User | Published clinic posts only | — |
+| `/automation/v1/…` | **API key** with the matching scope | A session token is not accepted here and an API key is not accepted anywhere else | 600/h per key |
 | `GET /files/products/{name}` | Public | Product photos only (never user photos) | — |
 | `GET /files/{folder}/{name}?exp&sig` | **Signed** | Signature bound to the exact path; expires after `SIGNED_URL_TTL_SECONDS` (900 s) | — |
 | `GET /health`, `/health/live` | Public | Liveness only | — |

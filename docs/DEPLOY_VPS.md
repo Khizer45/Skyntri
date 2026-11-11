@@ -125,6 +125,17 @@ Check:
 
 Sign up on the live site with the `ADMIN_EMAILS` address: you get the *Admin panel*. Other people sign up normally and can use Skin Analysis.
 
+**Do this before you share the link.** Sign-up does not verify e-mail addresses, so whoever registers the `ADMIN_EMAILS` address first becomes the administrator. Two safe ways:
+
+* Sign up yourself as the very first thing after the start, or
+* leave `ADMIN_EMAILS` empty, sign up with any address, and make that account an administrator from the server:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python -m app.cli make-admin you@example.com
+```
+
+Only someone who can log in to the server can run this command. With Google sign-in set up ([INTEGRATIONS.md](INTEGRATIONS.md)), signing in with Google is safe too, because Google has verified the address.
+
 ## Everyday commands (run inside `~/Skyntri`)
 
 | Task | Command |
@@ -154,5 +165,6 @@ Sign up on the live site with the `ADMIN_EMAILS` address: you get the *Admin pan
 
 * The app stores users' face photos. Keep the server updated (`apt update && apt upgrade`), make regular database backups and describe on the Privacy page what is stored and for how long.
 * Password reset e-mails need SMTP settings in `.env`. Without them, password reset stays off.
-* Skin disease screening stays off (`DISEASE_SCREENING_ENABLED=false`) until the model has been trained and its results reviewed.
+* Skin disease screening stays off until an administrator turns it on under **Admin → Settings**. Do that only after a dermatologist has reviewed the model's results.
+* Google sign-in, card and PayPal payments, the assistant's language model and n8n are optional: see `docs/INTEGRATIONS.md`.
 * See `docs/DEPLOYMENT_RUNBOOK.md` for backups, restore and rollback.

@@ -45,3 +45,22 @@ Set these in the hosting platform's secret/config store, or in `backend/.env` fo
 | `LLM_ENABLED`, `LLM_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, `LLM_MAX_OUTPUT_TOKENS` | disabled | only after privacy review | Optional assistant provider; local fallback always works |
 
 Frontend: `VITE_API_URL` (build time) — the API base URL; also used in the production CSP.
+
+## Accounts, clinic, payments and automation
+
+Setup steps for each provider: [INTEGRATIONS.md](INTEGRATIONS.md).
+
+| Variable | Default | Production | Meaning |
+|---|---|---|---|
+| `GOOGLE_CLIENT_ID` | empty | optional | OAuth client ID for "Continue with Google". Empty hides the button |
+| `LLM_IMAGE_ENABLED`, `GEMINI_IMAGE_MODEL`, `OPENAI_IMAGE_MODEL`, `CHAT_IMAGES_PER_DAY` | off, 10 per day | optional, billed per image | Illustrations in the assistant |
+| `CLINIC_NAME`, `CLINIC_TIMEZONE` | `Skyntri Clinic`, `Asia/Karachi` | set | Name on prescriptions and payments; doctors' working hours are in this time zone |
+| `APPOINTMENT_MIN_NOTICE_MINUTES`, `APPOINTMENT_MAX_DAYS_AHEAD`, `APPOINTMENT_BOOKINGS_PER_DAY` | 60, 60, 6 | as needed | Booking window and per-patient limit |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | empty | secret | Card payments. `sk_test_` keys take no real money |
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE` | empty, `sandbox` | secret | PayPal. `PAYPAL_MODE=live` takes real money |
+| `PAYPAL_CURRENCY`, `PAYPAL_EXCHANGE_RATE` | `USD`, `0` | set when the shop currency is not supported by PayPal | Shop amount ÷ rate is charged in `PAYPAL_CURRENCY`. `0` keeps PayPal off for other currencies |
+| `AUTOMATION_ALLOWED_HOSTS` | empty (`n8n` in Compose) | only hosts you run | Private host names webhooks may call. Other private or local addresses are refused in production |
+| `AGENTS_SCHEDULER_ENABLED`, `AGENT_DAILY_HOUR` | `false`, `8` | `true` unless n8n or cron starts the agents | Built-in agent schedule (clinic time zone) |
+| `AGENT_POSTS_AUTO_PUBLISH` | `false` | as wanted | Default for the admin switch "Publish daily posts automatically" |
+| `DISEASE_SCREENING_ENABLED` | `false` | — | Default only: the switch under **Admin → Settings** overrides it once it has been used |
+

@@ -70,6 +70,28 @@ class ChangePasswordRequest(BaseModel):
     )
 
 
+class SetPasswordRequest(BaseModel):
+    new_password: str = Field(
+        min_length=8,
+        max_length=128,
+    )
+
+
+class GoogleLoginRequest(BaseModel):
+    credential: str = Field(
+        min_length=20,
+        max_length=4096,
+    )
+
+
+class ChangeEmailRequest(BaseModel):
+    new_email: EmailStr
+    current_password: str = Field(
+        min_length=1,
+        max_length=128,
+    )
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(
         from_attributes=True
@@ -78,11 +100,15 @@ class UserOut(BaseModel):
     id: str
     full_name: str
     email: EmailStr
+    phone: str | None = None
     skin_type: str
     avatar_url: str | None = None
     role: str = "user"
     notify_analysis: bool
     notify_reports: bool
+    password_set: bool = True
+    email_verified: bool = False
+    google_linked: bool = False
     created_at: datetime
 
     @field_serializer("avatar_url")
@@ -106,6 +132,13 @@ class ProfileUpdateRequest(BaseModel):
     skin_type: str | None = Field(
         default=None,
         max_length=50,
+    )
+
+    # International or local number. An empty string removes it.
+    phone: str | None = Field(
+        default=None,
+        max_length=20,
+        pattern=r"^$|^\+?[0-9][0-9 ()-]{5,18}[0-9]$",
     )
 
 

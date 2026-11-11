@@ -192,6 +192,70 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     llm_max_output_tokens: int = 1200
 
+    # Illustrations in the assistant ("draw a morning routine"). Off by
+    # default: image models are billed per image by the provider.
+    llm_image_enabled: bool = False
+    gemini_image_model: str = "gemini-2.5-flash-image"
+    openai_image_model: str = "gpt-image-1"
+    chat_images_per_day: int = 10
+
+    # ========================================================================
+    # Sign in with Google
+    # ========================================================================
+
+    # OAuth 2.0 "Web application" client ID from Google Cloud Console.
+    # Empty = the Google button is hidden and /auth/google returns 503.
+    google_client_id: str = ""
+
+    # ========================================================================
+    # Clinic (doctors and appointments)
+    # ========================================================================
+
+    clinic_name: str = "Skyntri Clinic"
+    # Working hours of doctors are entered in this time zone.
+    clinic_timezone: str = "Asia/Karachi"
+    appointment_min_notice_minutes: int = 60
+    appointment_max_days_ahead: int = 60
+    appointment_bookings_per_day: int = 6
+    consultation_messages_per_hour: int = 120
+
+    # ========================================================================
+    # Online payments (card through Stripe, PayPal)
+    # ========================================================================
+
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+
+    paypal_client_id: str = ""
+    paypal_client_secret: str = ""
+    paypal_mode: str = "sandbox"  # "sandbox" or "live"
+    # PayPal cannot charge every currency (PKR is not supported). When the
+    # shop currency differs, set how many units of the shop currency equal
+    # one unit of PAYPAL_CURRENCY, e.g. 280 for PKR per USD.
+    paypal_currency: str = "USD"
+    paypal_exchange_rate: float = 0.0
+
+    payment_checkouts_per_hour: int = 20
+
+    # ========================================================================
+    # Automation (n8n, Zapier, custom agents)
+    # ========================================================================
+
+    # Host names that webhooks may call even though they are private
+    # addresses, e.g. "n8n" for the n8n container. In development every
+    # host is allowed.
+    automation_allowed_hosts: str = ""
+    webhook_timeout_seconds: float = 8.0
+    automation_requests_per_hour: int = 600
+
+    # Run the built-in agents from inside the API process. Leave off when an
+    # external scheduler (n8n, cron) calls /automation/v1/agents/<name>/run.
+    agents_scheduler_enabled: bool = False
+    # Hour of the day (clinic time zone) for the daily report and daily post.
+    agent_daily_hour: int = 8
+    # False = daily posts are saved as drafts for an administrator to publish.
+    agent_posts_auto_publish: bool = False
+
     # ========================================================================
     # Properties
     # ========================================================================
@@ -219,6 +283,18 @@ class Settings(BaseSettings):
     @property
     def smtp_configured(self) -> bool:
         return bool(self.smtp_host and self.smtp_from)
+
+    @property
+    def stripe_configured(self) -> bool:
+        return bool(self.stripe_secret_key)
+
+    @property
+    def paypal_configured(self) -> bool:
+        return bool(self.paypal_client_id and self.paypal_client_secret)
+
+    @property
+    def automation_allowed_host_list(self) -> set[str]:
+        return {h.strip().lower() for h in self.automation_allowed_hosts.split(",") if h.strip()}
 
     @property
     def project_root(self) -> Path:
@@ -323,6 +399,18 @@ def validate_for_startup(config: Settings) -> list[str]:
             warnings.append(
                 "SQLite is not recommended in production; use PostgreSQL"
             )
+
+        if config.stripe_configured and not config.stripe_webhook_secret:
+            warnings.append(
+                "STRIPE_WEBHOOK_SECRET is not set: card payments are only confirmed "
+                "when the customer returns to the site"
+            )
+
+        if config.stripe_secret_key.startswith("sk_test_"):
+            warnings.append("STRIPE_SECRET_KEY is a test key: no real card is charged")
+
+        if config.paypal_configured and config.paypal_mode.strip().lower() != "live":
+            warnings.append("PAYPAL_MODE is sandbox: no real payment is taken")
 
         if problems:
             raise ConfigurationError(

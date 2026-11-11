@@ -14,8 +14,18 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_db
-from app.db.models import ContactMessage, Order, Product, SkinAnalysis, User
+from app.db.models import (
+    Appointment,
+    AuditEvent,
+    ContactMessage,
+    DoctorProfile,
+    Order,
+    Product,
+    SkinAnalysis,
+    User,
+)
 from app.dependencies import require_admin
+from app.services import app_settings, audit, disease_screening
 from app.services import shop as shop_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -82,6 +92,15 @@ def admin_stats(_admin: User = Depends(require_admin), db: Session = Depends(get
             "last_7d": db.query(func.count(SkinAnalysis.id)).filter(SkinAnalysis.created_at >= week_ago).scalar() or 0,
         },
         "contact_messages": db.query(func.count(ContactMessage.id)).scalar() or 0,
+        "clinic": {
+            "doctors": db.query(func.count(DoctorProfile.id)).filter(DoctorProfile.status == "approved").scalar() or 0,
+            "doctors_pending": db.query(func.count(DoctorProfile.id))
+            .filter(DoctorProfile.status == "pending").scalar() or 0,
+            "appointments_upcoming": db.query(func.count(Appointment.id))
+            .filter(Appointment.status.in_(["requested", "confirmed"]), Appointment.starts_at >= now).scalar() or 0,
+            "appointments_7d": db.query(func.count(Appointment.id))
+            .filter(Appointment.created_at >= week_ago).scalar() or 0,
+        },
         "recent_orders": [
             {
                 "id": o.id,
@@ -143,7 +162,12 @@ def admin_update_user(
 
     if payload.role is not None:
         if payload.role not in {"user", "admin"}:
-            raise HTTPException(status_code=400, detail="Role must be 'user' or 'admin'.")
+            raise HTTPException(
+                status_code=400,
+                detail="Role must be 'user' or 'admin'. Doctors are approved under Admin -> Doctors.",
+            )
+        if payload.role != user.role:
+            audit.record(db, admin.id, "user.role_changed", user.id, f"{user.role} -> {payload.role}")
         user.role = payload.role
     if payload.is_active is not None:
         user.is_active = payload.is_active
@@ -156,3 +180,81 @@ def admin_update_user(
         orders=db.query(func.count(Order.id)).filter(Order.user_id == user.id).scalar() or 0,
         analyses=db.query(func.count(SkinAnalysis.id)).filter(SkinAnalysis.user_id == user.id).scalar() or 0,
     )
+
+
+# ============================================================
+# Settings (run-time switches) and audit trail
+# ============================================================
+
+class SettingUpdate(BaseModel):
+    key: str
+    value: bool
+
+
+def _settings_payload(db: Session) -> dict:
+    return {
+        "settings": app_settings.describe(db),
+        # What is connected. Only yes/no is reported, never a key.
+        "integrations": {
+            "google_sign_in": bool(settings.google_client_id),
+            "card_payments": settings.stripe_configured,
+            "paypal": settings.paypal_configured,
+            "email": settings.smtp_configured,
+            "assistant_llm": bool(settings.llm_enabled and (settings.gemini_api_key or settings.openai_api_key)),
+            "assistant_images": bool(settings.llm_image_enabled),
+            "agent_scheduler": bool(settings.agents_scheduler_enabled),
+        },
+        "disease_model_installed": disease_screening.model_files_present(),
+    }
+
+
+@router.get("/settings")
+def admin_get_settings(_admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return _settings_payload(db)
+
+
+@router.put("/settings")
+def admin_update_setting(
+    payload: SettingUpdate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if payload.key not in app_settings.EDITABLE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown setting.")
+
+    if (
+        payload.key == "disease_screening_enabled"
+        and payload.value
+        and not disease_screening.model_files_present()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The skin disease model files are not installed in backend/models/ yet.",
+        )
+
+    app_settings.set_value(db, payload.key, payload.value, updated_by=admin.id)
+    audit.record(db, admin.id, "setting.changed", payload.key, str(payload.value).lower())
+    db.commit()
+    return _settings_payload(db)
+
+
+@router.get("/audit")
+def admin_audit_log(
+    limit: int = Query(default=100, ge=1, le=500),
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    events = db.query(AuditEvent).order_by(desc(AuditEvent.created_at)).limit(limit).all()
+    actor_ids = {e.actor for e in events}
+    names = dict(db.query(User.id, User.email).filter(User.id.in_(actor_ids)).all()) if actor_ids else {}
+    return [
+        {
+            "id": e.id,
+            "actor": names.get(e.actor, e.actor),
+            "action": e.action,
+            "target": e.target,
+            "detail": e.detail,
+            "created_at": e.created_at,
+        }
+        for e in events
+    ]

@@ -13,6 +13,8 @@ reportlab==4.2.2
 python-dotenv==1.0.1
 email-validator==2.2.0
 python-dateutil==2.9.0
+# Time-zone database for clinic working hours (slim images have none).
+tzdata==2026.6
 
 # OCR: pytesseract is only a wrapper. The Tesseract executable must be
 # installed on the host/container (apt-get install tesseract-ocr).

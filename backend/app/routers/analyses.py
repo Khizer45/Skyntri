@@ -15,7 +15,7 @@ from app.schemas import (
     SkinAnalysisCreate,
     SkinAnalysisOut,
 )
-from app.services import disease_screening, rate_limit
+from app.services import app_settings, disease_screening, rate_limit
 from app.services.image_gate import RETAKE_GUIDANCE, assess_image
 from app.services.skin_analysis import InferenceBusyError, analyze_skin_image, model_artifact_available
 from app.services.uploads import delete_upload, resolve_upload_url, save_upload
@@ -141,17 +141,29 @@ TRACK_DESCRIPTIONS = {
 }
 
 
-def available_tracks() -> set[str]:
+def disease_track_available(db: Session | None = None) -> bool:
+    """
+    Model B needs its model files AND the switch to be on. The switch is the
+    administrator's setting when one was saved (Admin panel -> Settings),
+    otherwise DISEASE_SCREENING_ENABLED from the environment.
+    """
+    override = app_settings.get_optional_bool(db, "disease_screening_enabled") if db is not None else None
+    if override is None:
+        return disease_screening.is_available()
+    return override and disease_screening.model_files_present()
+
+
+def available_tracks(db: Session | None = None) -> set[str]:
     """
     Model A is available when its trained file is installed in backend/models/.
-    Model B only when its model files are installed AND
-    DISEASE_SCREENING_ENABLED=true, which must be set only after dataset,
-    external-validation and dermatology review (SEC-MED-003).
+    Model B only when its model files are installed AND screening is switched
+    on, which should happen only after dataset, external-validation and
+    dermatology review (SEC-MED-003).
     """
     tracks = set()
     if model_artifact_available():
         tracks.add(TRACK_FACIAL)
-    if disease_screening.is_available():
+    if disease_track_available(db):
         tracks.add(TRACK_DISEASE)
     return tracks
 
@@ -161,13 +173,13 @@ def _unavailable_reason(track: str) -> str:
         return "The facial analysis model has not been installed yet."
     if not disease_screening.model_files_present():
         return "The skin disease model has not been installed yet."
-    return "Skin disease screening is switched off until it has been clinically reviewed."
+    return "Skin disease screening is switched off. An administrator can turn it on after clinical review."
 
 
 @router.get("/tracks")
-def list_tracks():
+def list_tracks(db: Session = Depends(get_db)):
     """Public description of the analysis tracks and whether each is available."""
-    available = available_tracks()
+    available = available_tracks(db)
     return [
         {
             "id": track,
@@ -237,7 +249,7 @@ def analyze_uploaded_skin_image(
             }
         )
 
-    if track not in available_tracks():
+    if track not in available_tracks(db):
         raise _abstain(
             {
                 "code": "track_not_available",

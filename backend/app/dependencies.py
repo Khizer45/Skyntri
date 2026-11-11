@@ -46,3 +46,23 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Administrator access is required.",
         )
     return current_user
+
+
+def require_doctor(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Approved doctors only. Returns the doctor's profile. The role and the
+    approval are both read from the database on every request, so a
+    suspended doctor loses access at once.
+    """
+    from app.db.models import DoctorProfile
+
+    profile = db.query(DoctorProfile).filter(DoctorProfile.user_id == current_user.id).first()
+    if profile is None or profile.status != "approved" or (current_user.role or "user") != "doctor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="An approved doctor account is required.",
+        )
+    return profile

@@ -19,12 +19,14 @@ from app.routers import (
     analyses,
     auth,
     chat,
+    clinic,
     contact,
     files,
     history,
     ingredients,
     profile,
     progress,
+    public,
     reports,
     scans,
     shop,
@@ -217,6 +219,8 @@ app.include_router(chat.router)
 app.include_router(files.router)
 app.include_router(shop.router)
 app.include_router(admin.router)
+app.include_router(clinic.router)
+app.include_router(public.router)
 
 
 # ---------------------------------------------------------------------------

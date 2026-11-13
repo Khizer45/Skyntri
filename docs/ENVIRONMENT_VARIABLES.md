@@ -42,7 +42,7 @@ Set these in the hosting platform's secret/config store, or in `backend/.env` fo
 | `PRICE_STALE_AFTER_DAYS` | `30` | keep | Older prices are labelled "may be outdated" |
 | `ORDER_PER_HOUR` / `MAX_CART_QUANTITY` | `20` / `10` | tune | Order rate limit per user, max quantity per cart line |
 | `MODEL_WARMUP` | `false` | `true` (Docker default) | Load the model at start-up |
-| `LLM_ENABLED`, `LLM_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, `LLM_MAX_OUTPUT_TOKENS` | disabled | only after privacy review | Optional assistant provider; local fallback always works |
+| `LLM_ENABLED`, `LLM_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, `LLM_MAX_OUTPUT_TOKENS` | disabled | only after privacy review | Optional assistant provider; local fallback always works. A retired `GEMINI_MODEL` is replaced automatically; `LLM_MAX_OUTPUT_TOKENS` (1500) is the wanted answer size |
 
 Frontend: `VITE_API_URL` (build time) — the API base URL; also used in the production CSP.
 
@@ -53,7 +53,7 @@ Setup steps for each provider: [INTEGRATIONS.md](INTEGRATIONS.md).
 | Variable | Default | Production | Meaning |
 |---|---|---|---|
 | `GOOGLE_CLIENT_ID` | empty | optional | OAuth client ID for "Continue with Google". Empty hides the button |
-| `LLM_IMAGE_ENABLED`, `GEMINI_IMAGE_MODEL`, `OPENAI_IMAGE_MODEL`, `CHAT_IMAGES_PER_DAY` | off, 10 per day | optional, billed per image | Illustrations in the assistant |
+| `LLM_IMAGE_ENABLED`, `GEMINI_IMAGE_MODEL`, `OPENAI_IMAGE_MODEL`, `CHAT_IMAGES_PER_DAY` | off, 10 per day | optional, billed per image | Illustrations in the assistant. Image models are never replaced automatically |
 | `CLINIC_NAME`, `CLINIC_TIMEZONE` | `Skyntri Clinic`, `Asia/Karachi` | set | Name on prescriptions and payments; doctors' working hours are in this time zone |
 | `APPOINTMENT_MIN_NOTICE_MINUTES`, `APPOINTMENT_MAX_DAYS_AHEAD`, `APPOINTMENT_BOOKINGS_PER_DAY` | 60, 60, 6 | as needed | Booking window and per-patient limit |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | empty | secret | Card payments. `sk_test_` keys take no real money |

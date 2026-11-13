@@ -189,14 +189,19 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-luna"
     gemini_api_key: str = ""
+    # A text model Google has retired is replaced automatically (services/llm.py).
     gemini_model: str = "gemini-2.5-flash"
-    llm_max_output_tokens: int = 1200
+    # Wanted size of one answer. An allowance for the model's "thinking" is
+    # added on top of this when the request is sent.
+    llm_max_output_tokens: int = 1500
 
     # Illustrations in the assistant ("draw a morning routine"). Off by
     # default: image models are billed per image by the provider.
     llm_image_enabled: bool = False
+    # Image models are never replaced automatically (they are billed). The
+    # connection test in Admin -> Settings lists the ones a key can use.
     gemini_image_model: str = "gemini-2.5-flash-image"
-    openai_image_model: str = "gpt-image-1"
+    openai_image_model: str = "gpt-image-2"
     chat_images_per_day: int = 10
 
     # ========================================================================

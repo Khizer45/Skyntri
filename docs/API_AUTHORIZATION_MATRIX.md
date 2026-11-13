@@ -54,6 +54,7 @@ Legend: **Public** = no token. **User** = valid access token; data is always fil
 | `POST /payments/stripe/webhook` | **Stripe signature** | HMAC-SHA256 with `STRIPE_WEBHOOK_SECRET`, 5-minute tolerance; the session is re-read from Stripe before anything is marked paid | — |
 | `GET /admin/payments` | **Admin** | Provider references and amounts; no card data exists | — |
 | `GET/PUT /admin/settings`, `GET /admin/audit` | **Admin** | Run-time switches (disease screening, auto-publish); every change is audited | — |
+| `POST /admin/connections/{name}/test` | **Admin** | One harmless request to an outside service with the configured key. Fixed provider addresses only; a key is never part of the answer | — |
 | `/admin/automation…`, `/admin/posts…` | **Admin** | API keys (shown once, stored hashed), webhooks (URL checked against private addresses), agents, clinic posts | — |
 | `GET /posts` | User | Published clinic posts only | — |
 | `/automation/v1/…` | **API key** with the matching scope | A session token is not accepted here and an API key is not accepted anywhere else | 600/h per key |

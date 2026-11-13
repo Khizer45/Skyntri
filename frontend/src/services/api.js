@@ -1159,6 +1159,7 @@ export function isSafePaymentUrl(url) {
 export const adminGetSettings = () => request('/admin/settings')
 export const adminUpdateSetting = (key, value) => request('/admin/settings', json('PUT', { key, value }))
 export const adminAuditLog = () => request('/admin/audit?limit=50')
+export const adminTestConnection = (name) => request(`/admin/connections/${encodeURIComponent(name)}/test`, json('POST'))
 
 export const adminAutomation = () => request('/admin/automation')
 export const adminCreateApiKey = (name, scopes) => request('/admin/automation/api-keys', json('POST', { name, scopes }))

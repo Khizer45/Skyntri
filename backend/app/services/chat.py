@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Sequence
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 
 from app.core.config import settings
+from app.services import llm
 
 
 # ============================================================================
@@ -39,12 +37,10 @@ from app.core.config import settings
 MAX_HISTORY_MESSAGES = 8
 MAX_HISTORY_MESSAGE_LENGTH = 1200
 MAX_USER_MESSAGE_LENGTH = 4000
+# Room for a long answer with a table; the database column has no limit.
+MAX_REPLY_LENGTH = 12000
 
 LLM_TIMEOUT_SECONDS = 30
-
-GEMINI_GENERATE_CONTENT_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-)
 
 
 # ============================================================================
@@ -612,46 +608,25 @@ def _generate_rule_based_reply(message: str) -> str:
 
 
 # ============================================================================
-# Gemini Response Extraction
+# Answers that were cut off
 # ============================================================================
 
-def _extract_gemini_text(response_data: dict) -> str:
+def _close_cut_off_reply(reply: str) -> str:
     """
-    Extract generated text from the Gemini generateContent response.
+    Tidy an answer the model could not finish: drop a half-written last
+    line (for example half a table row) and mark the cut.
     """
 
-    candidates = response_data.get("candidates", [])
+    lines = reply.rstrip().split("\n")
 
-    if not isinstance(candidates, list) or not candidates:
-        return ""
+    if len(lines) > 1:
+        last = lines[-1].strip()
+        half_table_row = last.startswith("|") and not last.endswith("|")
 
-    first_candidate = candidates[0]
+        if half_table_row or (last and last[-1] not in ".!?:)|*`۔؟"):
+            lines = lines[:-1]
 
-    if not isinstance(first_candidate, dict):
-        return ""
-
-    content = first_candidate.get("content", {})
-
-    if not isinstance(content, dict):
-        return ""
-
-    parts = content.get("parts", [])
-
-    if not isinstance(parts, list):
-        return ""
-
-    text_parts: list[str] = []
-
-    for part in parts:
-        if not isinstance(part, dict):
-            continue
-
-        text_value = part.get("text")
-
-        if isinstance(text_value, str) and text_value.strip():
-            text_parts.append(text_value.strip())
-
-    return "\n".join(text_parts).strip()
+    return "\n".join(lines).rstrip() + "\n\n…"
 
 
 # ============================================================================
@@ -804,22 +779,8 @@ def _generate_gemini_reply(
     failure returns None so the caller can use the local fallback.
     """
 
-    if not settings.llm_enabled:
+    if not llm.text_available():
         return None
-
-    provider = settings.llm_provider.strip().casefold()
-
-    if provider != "gemini":
-        return None
-
-    api_key = settings.gemini_api_key.strip()
-
-    if not api_key:
-        return None
-
-    model = settings.gemini_model.strip() or "gemini-2.5-flash"
-
-    url = f"{GEMINI_GENERATE_CONTENT_URL}{model}:generateContent"
 
     payload = {
         "systemInstruction": {
@@ -835,47 +796,24 @@ def _generate_gemini_reply(
             user_context=user_context,
         ),
         "generationConfig": {
-            "maxOutputTokens": settings.llm_max_output_tokens,
+            # Thinking tokens count against this limit, so it is the wanted
+            # answer size plus an allowance (see services/llm.py).
+            "maxOutputTokens": llm.output_limit(settings.llm_max_output_tokens),
         },
     }
 
-    http_request = urllib_request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        method="POST",
-        headers={
-            "x-goog-api-key": api_key,
-            "Content-Type": "application/json",
-        },
-    )
+    # A model that Google has retired is replaced inside ask_gemini.
+    result = llm.ask_gemini(payload, timeout=LLM_TIMEOUT_SECONDS)
 
-    try:
-        with urllib_request.urlopen(
-            http_request,
-            timeout=LLM_TIMEOUT_SECONDS,
-        ) as response:
-            response_data = json.loads(
-                response.read().decode("utf-8")
-            )
-
-    except (
-        urllib_error.HTTPError,
-        urllib_error.URLError,
-        TimeoutError,
-        json.JSONDecodeError,
-        OSError,
-    ):
-        return None
-
-    if not isinstance(response_data, dict):
-        return None
-
-    reply = _extract_gemini_text(response_data)
+    reply, cut_off = llm.extract_text(result.data)
 
     if not reply:
         return None
 
-    return reply[:MAX_USER_MESSAGE_LENGTH]
+    if cut_off:
+        reply = _close_cut_off_reply(reply)
+
+    return reply[:MAX_REPLY_LENGTH]
 
 
 # ============================================================================

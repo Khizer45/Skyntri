@@ -6,7 +6,7 @@ Every connection is optional. Without a key the feature is hidden or reports "no
 docker compose up -d
 ```
 
-**Admin → Settings → Connections** shows which ones the server sees.
+**Admin → Settings → Connections** shows which ones the server sees. A value in `.env` is shown as **Not tested**. Press **Test** (or **Test all**) after every change: the server sends one harmless request to the service and shows **Working**, or **Problem** with the reason (wrong key, retired model, missing setting, service not reachable). A test charges nothing, creates nothing at the provider and sends no e-mail. The assistant test asks the model for one word.
 
 | Service | Used for | Cost | Settings |
 |---|---|---|---|
@@ -44,9 +44,13 @@ LLM_ENABLED=true
 GEMINI_API_KEY=your-key
 ```
 
-Without it the assistant answers from built-in rules (still with tables for routines). With it, it answers freely in English, Urdu or Roman Urdu. Check the model name in `GEMINI_MODEL` against Google's current list if calls fail.
+Without it the assistant answers from built-in rules (still with tables for routines). With it, it answers freely in English, Urdu or Roman Urdu.
 
-**Illustrations** ("make an image of a morning routine") need an image model and are billed per image. Turn them on with `LLM_IMAGE_ENABLED=true`. The model names are in `GEMINI_IMAGE_MODEL` / `OPENAI_IMAGE_MODEL`; check them against the provider's current list. Each user can make `CHAT_IMAGES_PER_DAY` images (default 10).
+**Model names change.** Google retires Gemini models every few months. When the model in `GEMINI_MODEL` no longer exists for your key, the server reads the list of models the key may use, switches to the newest "flash" model and writes that to the log. The connection test names the model in use, so you can put it into `GEMINI_MODEL`. If the test reports that the quota is used up, wait a minute or choose another model.
+
+`LLM_MAX_OUTPUT_TOKENS` (default 1500) is the wanted size of one answer. Newer models think before they answer and that thinking counts against the limit, so the server adds an allowance on top; a small value no longer cuts answers in the middle.
+
+**Illustrations** ("make an image of a morning routine") need an image model and are billed per image. Turn them on with `LLM_IMAGE_ENABLED=true`. The model names are in `GEMINI_IMAGE_MODEL` / `OPENAI_IMAGE_MODEL`. Because images cost money, an image model is never replaced automatically: when one is retired, the connection test lists the image models your key can use. Each user can make `CHAT_IMAGES_PER_DAY` images (default 10).
 
 Voice input and read-aloud need no key: they use the browser (Chrome and Edge support Urdu speech recognition; Firefox has no speech recognition).
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Button from '../components/Button.jsx'
 import Card from '../components/Card.jsx'
 import { Alert, Badge, Section, Toggle, dateTime } from '../components/ui.jsx'
 import { useToast } from '../context/ToastContext.jsx'
@@ -19,12 +20,24 @@ const INTEGRATIONS = [
   ['agent_scheduler', 'Built-in agent scheduler', 'AGENTS_SCHEDULER_ENABLED'],
 ]
 
+// A value in .env says nothing about whether the service accepts it, so a
+// connection is only called "Working" after a test.
+function connectionBadge(key, isSet, result) {
+  if (key === 'agent_scheduler') return isSet ? ['green', 'On'] : ['neutral', 'Off']
+  if (!isSet) return ['neutral', 'Not set up']
+  if (result?.state === 'working') return ['green', 'Working']
+  if (result?.state === 'problem') return ['red', 'Problem']
+  return ['amber', 'Not tested']
+}
+
 export default function AdminSettings() {
   const { showToast } = useToast()
   const [data, setData] = useState(null)
   const [audit, setAudit] = useState([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
+  const [tests, setTests] = useState({})
+  const [testing, setTesting] = useState('')
 
   const loadAudit = () => api.adminAuditLog().then(setAudit).catch(() => {})
 
@@ -45,6 +58,32 @@ export default function AdminSettings() {
     } finally {
       setBusy('')
     }
+  }
+
+  const testOne = async (key) => {
+    let result
+    try {
+      result = await api.adminTestConnection(key)
+    } catch (err) {
+      result = { state: 'problem', summary: err.message, details: [] }
+    }
+    setTests((current) => ({ ...current, [key]: result }))
+  }
+
+  const canTest = (key) => Boolean(data?.integrations[key]) && (data?.testable || []).includes(key)
+
+  const test = async (key) => {
+    setTesting(key)
+    await testOne(key)
+    setTesting('')
+  }
+
+  const testAll = async () => {
+    setTesting('all')
+    for (const [key] of INTEGRATIONS) {
+      if (canTest(key)) await testOne(key)
+    }
+    setTesting('')
   }
 
   return (
@@ -75,17 +114,42 @@ export default function AdminSettings() {
             </Card>
           </Section>
 
-          <Section title="Connections" description="Keys are set on the server in the .env file. Only whether each one is set is shown here.">
+          <Section
+            title="Connections"
+            description="Keys are set on the server in the .env file and are never shown here. A test sends one harmless request to the service: nothing is charged and no e-mail is sent."
+            action={INTEGRATIONS.some(([key]) => canTest(key)) && (
+              <Button size="sm" variant="outline" className="shrink-0 whitespace-nowrap" loading={testing === 'all'} disabled={Boolean(testing)} onClick={testAll}>Test all</Button>
+            )}
+          >
             <Card className="divide-soft">
-              {INTEGRATIONS.map(([key, name, env]) => (
-                <div key={key} className="flex items-center justify-between gap-3 px-4 py-3">
-                  <div>
-                    <p className="text-sm text-neutral-900 dark:text-white">{name}</p>
-                    <p className="muted text-xs">{env}</p>
+              {INTEGRATIONS.map(([key, name, env]) => {
+                const result = tests[key]
+                const [tone, text] = connectionBadge(key, Boolean(data.integrations[key]), result)
+                return (
+                  <div key={key} className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm text-neutral-900 dark:text-white">{name}</p>
+                        <p className="muted break-words text-xs">{env}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge tone={tone}>{text}</Badge>
+                        {canTest(key) && (
+                          <Button size="sm" variant="outline" loading={testing === key} disabled={Boolean(testing)} onClick={() => test(key)} aria-label={`Test ${name}`}>Test</Button>
+                        )}
+                      </div>
+                    </div>
+                    {result && (
+                      <div className="mt-2" aria-live="polite">
+                        <p className={`text-sm ${result.state === 'working' ? 'text-brand-800 dark:text-brand-200' : 'text-red-700 dark:text-red-300'}`}>{result.summary}</p>
+                        {(result.details || []).map((line) => (
+                          <p key={line} className="muted mt-1 break-words text-xs">{line}</p>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <Badge tone={data.integrations[key] ? 'green' : 'neutral'}>{data.integrations[key] ? 'Connected' : 'Not set up'}</Badge>
-                </div>
-              ))}
+                )
+              })}
             </Card>
           </Section>
 

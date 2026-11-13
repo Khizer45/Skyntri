@@ -12,6 +12,16 @@ from app.db.database import Base, get_db
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def _fresh_llm_state():
+    """The model list and a chosen replacement model are cached in the process."""
+    from app.services import llm
+
+    llm.reset()
+    yield
+    llm.reset()
+
+
 @pytest.fixture
 def api(tmp_path, monkeypatch):
     """

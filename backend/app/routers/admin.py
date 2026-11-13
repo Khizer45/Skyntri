@@ -25,7 +25,7 @@ from app.db.models import (
     User,
 )
 from app.dependencies import require_admin
-from app.services import app_settings, audit, disease_screening
+from app.services import app_settings, audit, connections, disease_screening, llm
 from app.services import shop as shop_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -194,16 +194,18 @@ class SettingUpdate(BaseModel):
 def _settings_payload(db: Session) -> dict:
     return {
         "settings": app_settings.describe(db),
-        # What is connected. Only yes/no is reported, never a key.
+        # Whether each optional service has its key. Only yes/no is reported,
+        # never a key. "Set" is not "working": that is what the test below is for.
         "integrations": {
             "google_sign_in": bool(settings.google_client_id),
             "card_payments": settings.stripe_configured,
             "paypal": settings.paypal_configured,
             "email": settings.smtp_configured,
-            "assistant_llm": bool(settings.llm_enabled and (settings.gemini_api_key or settings.openai_api_key)),
-            "assistant_images": bool(settings.llm_image_enabled),
+            "assistant_llm": llm.text_available(),
+            "assistant_images": llm.image_provider() is not None,
             "agent_scheduler": bool(settings.agents_scheduler_enabled),
         },
+        "testable": sorted(connections.TESTS),
         "disease_model_installed": disease_screening.model_files_present(),
     }
 
@@ -236,6 +238,17 @@ def admin_update_setting(
     audit.record(db, admin.id, "setting.changed", payload.key, str(payload.value).lower())
     db.commit()
     return _settings_payload(db)
+
+
+@router.post("/connections/{name}/test")
+def admin_test_connection(name: str, _admin: User = Depends(require_admin)):
+    """
+    Send one harmless request to an outside service with the configured key
+    and report what it answered. Nothing is charged, created or e-mailed.
+    """
+    if name not in connections.TESTS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown connection.")
+    return connections.run(name)
 
 
 @router.get("/audit")

@@ -207,7 +207,7 @@ def test_routine_answer_is_a_markdown_table(api):
 
 def test_reply_language_reaches_the_model(api, monkeypatch):
     from app.core.config import settings
-    from app.services import chat as chat_service
+    from app.services import http_client, llm
     from tests.conftest import register
 
     client, _ = api
@@ -215,32 +215,42 @@ def test_reply_language_reaches_the_model(api, monkeypatch):
     assert client.post("/chat", json={"message": "hello", "language": "klingon"}, headers=headers).status_code == 422
 
     seen = {}
+    answer = {"text": "Jawab", "finish": "STOP"}
 
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-        def read(self):
-            import json as _json
-            return _json.dumps({"candidates": [{"content": {"parts": [{"text": "Jawab"}]}}]}).encode()
-
-    def fake_urlopen(request, timeout=None):
+    def fake_send(method, url, *, headers=None, json_body=None, form=None, data=None, timeout=15.0):
         import json as _json
-        seen["system"] = _json.loads(request.data)["systemInstruction"]["parts"][0]["text"]
-        return FakeResponse()
+        assert url == f"{llm.GEMINI_MODELS_URL}/gemini-2.5-flash:generateContent"
+        assert headers == {"x-goog-api-key": "test-key"}
+        seen["system"] = json_body["systemInstruction"]["parts"][0]["text"]
+        seen["limit"] = json_body["generationConfig"]["maxOutputTokens"]
+        body = {"candidates": [{"content": {"parts": [{"text": answer["text"]}]}, "finishReason": answer["finish"]}]}
+        return http_client.HttpResponse(200, _json.dumps(body).encode())
 
     monkeypatch.setattr(settings, "llm_enabled", True)
     monkeypatch.setattr(settings, "gemini_api_key", "test-key")
-    monkeypatch.setattr(chat_service.urllib_request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(settings, "gemini_model", "gemini-2.5-flash")
+    monkeypatch.setattr(settings, "llm_max_output_tokens", 1500)
+    monkeypatch.setattr(http_client, "send", fake_send)
 
-    client.post("/chat", json={"message": "Meri skin oily hai", "language": "roman_ur"}, headers=headers)
+    reply = client.post("/chat", json={"message": "Meri skin oily hai", "language": "roman_ur"}, headers=headers)
+    assert reply.json()["content"].startswith("Jawab")
     assert seen["system"].endswith("Reply language: Roman Urdu (Urdu written with Latin letters).")
     assert "FYP" not in seen["system"] and "student" not in seen["system"]
+    # Room for the model's thinking is added to the wanted answer size.
+    assert seen["limit"] == 1500 + llm.THINKING_ALLOWANCE_TOKENS
     client.post("/chat", json={"message": "My skin is oily"}, headers=headers)
     assert "Reply language" not in seen["system"]
+
+    # A long answer (a routine with a table) is kept whole.
+    answer["text"] = "Line about skin care.\n" * 300
+    long_reply = client.post("/chat", json={"message": "Give me a full routine"}, headers=headers).json()["content"]
+    assert len(long_reply) > 6000
+
+    # An answer the model could not finish loses its half-written last row and is marked.
+    answer.update(text="| Step | Morning |\n| --- | --- |\n| Cleanse | Gentle cleanser |\n| Moisturise | Light cr",
+                  finish="MAX_TOKENS")
+    cut = client.post("/chat", json={"message": "Routine as a table"}, headers=headers).json()["content"]
+    assert "| Cleanse | Gentle cleanser |" in cut and "Light cr" not in cut and "\n\n…" in cut
 
 
 def test_image_request_without_provider_explains(api):

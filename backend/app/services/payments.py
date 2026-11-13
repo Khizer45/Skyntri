@@ -234,15 +234,20 @@ def _paypal_base() -> str:
     return PAYPAL_API["live" if settings.paypal_mode.strip().lower() == "live" else "sandbox"]
 
 
-def _paypal_token() -> str:
+def paypal_token_response() -> http_client.HttpResponse:
+    """Ask PayPal for an access token. Raises http_client.HttpError when PayPal cannot be reached."""
     credentials = base64.b64encode(
         f"{settings.paypal_client_id}:{settings.paypal_client_secret}".encode()
     ).decode()
+    return http_client.send(
+        "POST", _paypal_base() + "/v1/oauth2/token", form={"grant_type": "client_credentials"},
+        headers={"Authorization": f"Basic {credentials}"}, timeout=20,
+    )
+
+
+def _paypal_token() -> str:
     try:
-        response = http_client.send(
-            "POST", _paypal_base() + "/v1/oauth2/token", form={"grant_type": "client_credentials"},
-            headers={"Authorization": f"Basic {credentials}"}, timeout=20,
-        )
+        response = paypal_token_response()
         token = response.json().get("access_token") if response.ok else None
     except http_client.HttpError:
         token = None

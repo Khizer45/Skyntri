@@ -194,7 +194,7 @@ def list_tracks(db: Session = Depends(get_db)):
 
 def _abstain(detail: dict) -> HTTPException:
     return HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail=detail,
     )
 

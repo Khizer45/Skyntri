@@ -55,6 +55,11 @@ def _load_keys(force: bool = False) -> dict[str, dict]:
         return keys
 
 
+def check_keys() -> int:
+    """Load Google's signing keys again and return how many there are. Raises GoogleAuthUnavailable."""
+    return len(_load_keys(force=True))
+
+
 def verify_id_token(credential: str) -> dict:
     """
     Return {"sub", "email", "name"} for a valid Google ID token.

@@ -1,5 +1,9 @@
 """
-Online payments: card (Stripe Checkout) and PayPal.
+Online payments: card (Safepay or Stripe Checkout) and PayPal.
+
+Stripe and PayPal do not open accounts for businesses registered in
+Pakistan. Safepay does, and takes Visa and Mastercard there, so "Card" is
+served by whichever of the two has keys (see card_provider()).
 
 The customer always pays on the provider's own page. Card numbers never
 reach this server, so it stays outside most of PCI DSS. This module only
@@ -9,8 +13,9 @@ reach this server, so it stays outside most of PCI DSS. This module only
 3. afterwards asks the provider (server to server) whether that checkout
    was paid, and marks the order or appointment as paid.
 
-Nothing the browser says is trusted for step 3. A Stripe webhook does the
-same when the customer closes the tab before returning.
+Nothing the browser says is trusted for step 3. A signed webhook from
+Stripe or Safepay does the same when the customer closes the tab before
+returning.
 
 Without API keys a provider is reported as "not set up" and cannot be
 chosen. Cash on delivery / pay at the clinic keep working.
@@ -25,7 +30,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from sqlalchemy.orm import Session
 
@@ -40,8 +45,14 @@ PAYPAL_API = {"live": "https://api-m.paypal.com", "sandbox": "https://api-m.sand
 STRIPE_ZERO_DECIMAL = {"bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv",
                        "xaf", "xof", "xpf"}
 WEBHOOK_TOLERANCE_SECONDS = 300
-PROVIDERS = ("stripe", "paypal")
-METHOD_NAME = {"stripe": "card", "paypal": "paypal"}
+PROVIDERS = ("stripe", "safepay", "paypal")
+METHOD_NAME = {"stripe": "card", "safepay": "card", "paypal": "paypal"}
+
+# Safepay: the API and the payment page live on different hosts in production.
+SAFEPAY_API = {"production": "https://api.getsafepay.com", "sandbox": "https://sandbox.api.getsafepay.com"}
+SAFEPAY_CHECKOUT = {"production": "https://getsafepay.com", "sandbox": "https://sandbox.api.getsafepay.com"}
+SAFEPAY_CURRENCIES = {"PKR", "USD", "GBP", "AED", "EUR", "CAD", "SAR"}
+SAFEPAY_PAID_STATE = "TRACKER_ENDED"
 
 
 class PaymentError(Exception):
@@ -103,6 +114,39 @@ def paypal_amount(amount: float, currency: str) -> tuple[float, str] | None:
     return None
 
 
+def card_provider(currency: str | None = None) -> str | None:
+    """The company that takes card payments, or None when neither has keys."""
+    ready = [name for name, ok in (("safepay", settings.safepay_configured),
+                                   ("stripe", settings.stripe_configured)) if ok]
+    wanted = settings.card_provider.strip().lower()
+    if wanted in ready:
+        return wanted
+    if len(ready) == 2:
+        return "safepay" if (currency or settings.shop_currency).upper() == "PKR" else "stripe"
+    return ready[0] if ready else None
+
+
+def _card_method(amount: float, currency: str) -> dict:
+    provider = card_provider(currency)
+    note = None
+    if provider is None:
+        note = "Card payments are not set up yet."
+    elif provider == "safepay" and currency.upper() not in SAFEPAY_CURRENCIES:
+        note = f"Card payments cannot be taken in {currency}."
+
+    test_mode = (not settings.safepay_live) if provider == "safepay" else \
+        settings.stripe_secret_key.startswith(("sk_test_", "rk_test_"))
+    return {
+        "id": provider or "stripe",
+        "label": "Card",
+        "available": note is None,
+        "note": note,
+        "amount": round(amount, 2),
+        "currency": currency,
+        "test_mode": bool(provider) and test_mode,
+    }
+
+
 def methods(amount: float, currency: str) -> list[dict]:
     converted = paypal_amount(amount, currency)
     paypal_note = None
@@ -114,15 +158,7 @@ def methods(amount: float, currency: str) -> list[dict]:
         paypal_note = "The amount is too small for PayPal."
 
     return [
-        {
-            "id": "stripe",
-            "label": "Card",
-            "available": settings.stripe_configured,
-            "note": None if settings.stripe_configured else "Card payments are not set up yet.",
-            "amount": round(amount, 2),
-            "currency": currency,
-            "test_mode": settings.stripe_secret_key.startswith("sk_test_"),
-        },
+        _card_method(amount, currency),
         {
             "id": "paypal",
             "label": "PayPal",
@@ -227,6 +263,149 @@ def handle_stripe_webhook(db: Session, payload: bytes, signature: str) -> str:
 
 
 # ============================================================
+# Safepay (cards, for businesses registered in Pakistan)
+#
+# Request shapes follow Safepay's own PHP library and WooCommerce plugin:
+#   POST /order/payments/v3/          -> data.tracker.token
+#   POST /client/passport/v1/token    -> data (a short-lived token)
+#   payment page: <checkout host>/embedded/?tbt=...&tracker=...
+#   GET  /reporter/api/v2/payments/<tracker>
+#   webhook: X-SFPY-SIGNATURE = HMAC-SHA512(body, webhook secret)
+# ============================================================
+
+def _safepay_env() -> str:
+    return "production" if settings.safepay_live else "sandbox"
+
+
+def safepay_request(method: str, path: str, body: dict | None = None) -> http_client.HttpResponse:
+    """One Safepay API call. Raises http_client.HttpError when Safepay cannot be reached."""
+    return http_client.send(
+        method, SAFEPAY_API[_safepay_env()] + path, timeout=20,
+        json_body=body if body is not None else ({} if method == "POST" else None),
+        headers={"X-SFPY-MERCHANT-SECRET": settings.safepay_secret_key.strip()},
+    )
+
+
+def _safepay(method: str, path: str, body: dict | None = None) -> dict:
+    try:
+        response = safepay_request(method, path, body)
+        data = response.json()
+    except http_client.HttpError:
+        raise PaymentError("The card payment service could not be reached. Please try again.", 502) from None
+    if not response.ok:
+        logger.warning("safepay_error", extra={"event": "safepay_error", "status": response.status, "path": path})
+        raise PaymentError("The card payment could not be started. Please try another method.", 502)
+    return data
+
+
+def _safepay_create(payment: Payment, api_base: str) -> tuple[str, str]:
+    created = _safepay("POST", "/order/payments/v3/", {
+        "merchant_api_key": settings.safepay_api_key.strip(),
+        "intent": "CYBERSOURCE",
+        "mode": "payment",
+        "currency": payment.charged_currency.upper(),
+        "amount": int(round(payment.charged_amount * 100)),  # minor units (paisa)
+        "order_id": payment.id,
+        "source": "skyntri",
+    })
+    tracker = (((created.get("data") or {}).get("tracker")) or {}).get("token")
+    token = _safepay("POST", "/client/passport/v1/token").get("data")
+    if not tracker or not isinstance(token, str) or not token:
+        logger.warning("safepay_error", extra={"event": "safepay_error", "status": 200, "path": "unexpected answer"})
+        raise PaymentError("The card payment could not be started. Please try another method.", 502)
+
+    # Safepay returns the customer to the API (it may use GET or POST); the
+    # API then forwards the browser to the web app. See /payments/safepay/return.
+    back = f"{api_base.rstrip('/')}/payments/safepay/return?payment={payment.id}"
+    query = urlencode({
+        "tbt": token,
+        "tracker": tracker,
+        "order_id": payment.id,
+        "environment": _safepay_env(),
+        "source": "hosted",
+        "redirect_url": back,
+        "cancel_url": back + "&cancelled=1",
+    })
+    return tracker, f"{SAFEPAY_CHECKOUT[_safepay_env()]}/embedded/?{query}"
+
+
+def _tracker_states(value) -> list[str]:
+    """Every "state": "TRACKER_..." in an answer, outermost first."""
+    found: list[str] = []
+    queue = [value]
+    while queue:
+        item = queue.pop(0)
+        if isinstance(item, dict):
+            state = item.get("state")
+            if isinstance(state, str) and state.startswith("TRACKER_"):
+                found.append(state)
+            queue.extend(item.values())
+        elif isinstance(item, list):
+            queue.extend(item)
+    return found
+
+
+def _safepay_is_paid(payment: Payment) -> bool:
+    """
+    Ask Safepay for the state of the tracker this server created.
+
+    The tracker was created here for an exact amount and the customer cannot
+    change it, and the token comes from the database, never from the browser.
+    So "this tracker has ended" means "this amount was paid".
+    """
+    answer = _safepay("GET", f"/reporter/api/v2/payments/{quote(payment.provider_ref or '', safe='')}")
+    states = _tracker_states(answer.get("data"))
+    return bool(states) and states[0] == SAFEPAY_PAID_STATE
+
+
+def verify_safepay_signature(payload: bytes, signature: str, secret: str) -> bool:
+    """X-SFPY-SIGNATURE: hex HMAC-SHA512 of the JSON body, keyed with the webhook secret."""
+    signature = (signature or "").strip().lower()
+    if not signature or not secret:
+        return False
+    candidates = [payload]
+    try:
+        # Safepay's own plugin signs the body re-encoded without spaces.
+        candidates.append(json.dumps(json.loads(payload.decode("utf-8")), separators=(",", ":")).encode())
+    except (UnicodeDecodeError, ValueError):
+        pass
+    return any(
+        hmac.compare_digest(hmac.new(secret.encode(), body, hashlib.sha512).hexdigest(), signature)
+        for body in candidates
+    )
+
+
+def handle_safepay_webhook(db: Session, payload: bytes, signature: str) -> str:
+    if not settings.safepay_webhook_secret:
+        raise PaymentError("Webhook is not configured.", 503)
+    if not verify_safepay_signature(payload, signature, settings.safepay_webhook_secret):
+        raise PaymentError("Invalid signature.", 400)
+
+    try:
+        event = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise PaymentError("Invalid payload.", 400) from None
+
+    data = event.get("data") if isinstance(event, dict) else None
+    if not isinstance(data, dict) or event.get("type") != "payment.succeeded":
+        return "ignored"
+    if data.get("state") not in (None, SAFEPAY_PAID_STATE):
+        return "ignored"
+
+    tracker = data.get("tracker")
+    if isinstance(tracker, dict):
+        tracker = tracker.get("token")
+    payment = db.query(Payment).filter(
+        Payment.provider == "safepay", Payment.provider_ref == str(tracker or "")
+    ).first() if tracker else None
+    if payment is None:
+        return "unknown"
+    # The event is signed with a secret only Safepay and this server know.
+    mark_paid(db, payment)
+    return payment.status
+
+
+# ============================================================
 # PayPal
 # ============================================================
 
@@ -321,12 +500,15 @@ def _paypal_capture_is_complete(payment: Payment) -> bool:
 # Checkout flow
 # ============================================================
 
-def start_checkout(db: Session, user: User, purpose: str, reference_id: str, provider: str) -> tuple[Payment, str]:
+def start_checkout(db: Session, user: User, purpose: str, reference_id: str, provider: str,
+                   api_base: str = "") -> tuple[Payment, str]:
     if provider not in PROVIDERS:
         raise PaymentError("Unknown payment method.")
     payable = find_payable(db, user, purpose, reference_id)
 
-    method = next(m for m in methods(payable.amount, payable.currency) if m["id"] == provider)
+    method = next((m for m in methods(payable.amount, payable.currency) if m["id"] == provider), None)
+    if method is None:  # a card company other than the one in use
+        raise PaymentError("This payment method is not available.", 409)
     if not method["available"]:
         raise PaymentError(method["note"] or "This payment method is not available.", 409)
 
@@ -343,6 +525,9 @@ def start_checkout(db: Session, user: User, purpose: str, reference_id: str, pro
     try:
         if provider == "stripe":
             payment.provider_ref, redirect = _stripe_create(payment, payable, user, return_url)
+        elif provider == "safepay":
+            payment.provider_ref, redirect = _safepay_create(
+                payment, settings.public_api_url.strip() or api_base)
         else:
             payment.provider_ref, redirect = _paypal_create(payment, payable, return_url)
     except PaymentError:
@@ -377,7 +562,12 @@ def confirm(db: Session, payment: Payment) -> Payment:
     """Ask the provider whether this checkout was paid."""
     if payment.status in {"succeeded", "refunded"} or not payment.provider_ref:
         return payment
-    paid = _stripe_is_paid(payment) if payment.provider == "stripe" else _paypal_capture_is_complete(payment)
+    if payment.provider == "stripe":
+        paid = _stripe_is_paid(payment)
+    elif payment.provider == "safepay":
+        paid = _safepay_is_paid(payment)
+    else:
+        paid = _paypal_capture_is_complete(payment)
     if paid:
         mark_paid(db, payment)
     return payment

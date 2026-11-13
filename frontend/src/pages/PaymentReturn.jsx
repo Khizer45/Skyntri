@@ -5,7 +5,7 @@ import { money } from '../components/ui.jsx'
 import DashboardLayout from '../layouts/DashboardLayout.jsx'
 import * as api from '../services/api.js'
 
-// The customer lands here after paying (or cancelling) on Stripe / PayPal.
+// The customer lands here after paying (or cancelling) on Safepay, Stripe or PayPal.
 // The server asks the provider for the real result.
 export default function PaymentReturn() {
   const [params] = useSearchParams()

@@ -12,6 +12,7 @@ const TITLES = {
 }
 const INTEGRATIONS = [
   ['google_sign_in', 'Sign in with Google', 'GOOGLE_CLIENT_ID'],
+  ['safepay', 'Card payments (Safepay, for Pakistan)', 'SAFEPAY_API_KEY, SAFEPAY_SECRET_KEY'],
   ['card_payments', 'Card payments (Stripe)', 'STRIPE_SECRET_KEY'],
   ['paypal', 'PayPal', 'PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET'],
   ['email', 'E-mail (reminders, password reset)', 'SMTP_HOST, SMTP_FROM'],

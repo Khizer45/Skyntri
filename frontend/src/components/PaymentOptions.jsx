@@ -4,7 +4,7 @@ import * as api from '../services/api.js'
 import Button from './Button.jsx'
 import { Alert, money } from './ui.jsx'
 
-const ICONS = { stripe: CreditCard, paypal: Wallet }
+const ICONS = { stripe: CreditCard, safepay: CreditCard, paypal: Wallet }
 
 /**
  * Pay an order or an appointment online. Lists the methods the server has
@@ -60,7 +60,7 @@ export default function PaymentOptions({ purpose, referenceId, offlineLabel }) {
               return (
                 <Button
                   key={method.id}
-                  variant={method.id === 'stripe' ? 'primary' : 'outline'}
+                  variant={method.label === 'Card' ? 'primary' : 'outline'}
                   icon={ICONS[method.id]}
                   loading={busy === method.id}
                   disabled={Boolean(busy)}

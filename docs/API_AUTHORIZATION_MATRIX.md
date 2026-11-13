@@ -51,6 +51,8 @@ Legend: **Public** = no token. **User** = valid access token; data is always fil
 | `GET /admin/appointments`, `PATCH /admin/appointments/{id}/payment` | **Admin** | No private notes, messages or shared photo; payment `unpaid → paid → refunded` | — |
 | `GET /payments/methods`, `POST /payments/checkout` | User | Own unpaid order or appointment only; the amount comes from the database | 20 checkouts/h per user |
 | `POST /payments/{id}/confirm`, `POST /payments/{id}/cancel` | User | Own payment only; the result is read from the provider, not from the browser | 60/h per user |
+| `POST /payments/safepay/webhook` | **Safepay signature** | HMAC-SHA512 of the body with `SAFEPAY_WEBHOOK_SECRET`; only `payment.succeeded` for a tracker this server created is acted on; repeats change nothing | — |
+| `GET/POST /payments/safepay/return` | Public | Forwards the browser to this site's own `/payment/return` page (fixed target, payment id checked against a pattern). Decides nothing: the page then calls `confirm` | — |
 | `POST /payments/stripe/webhook` | **Stripe signature** | HMAC-SHA256 with `STRIPE_WEBHOOK_SECRET`, 5-minute tolerance; the session is re-read from Stripe before anything is marked paid | — |
 | `GET /admin/payments` | **Admin** | Provider references and amounts; no card data exists | — |
 | `GET/PUT /admin/settings`, `GET /admin/audit` | **Admin** | Run-time switches (disease screening, auto-publish); every change is audited | — |

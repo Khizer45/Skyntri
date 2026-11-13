@@ -1,10 +1,12 @@
-"""Online payments API (card through Stripe, PayPal). See services/payments.py."""
+"""Online payments API (card through Safepay or Stripe, PayPal). See services/payments.py."""
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -23,7 +25,7 @@ Purpose = Literal["order", "appointment"]
 class CheckoutIn(BaseModel):
     purpose: Purpose
     reference_id: str
-    provider: Literal["stripe", "paypal"]
+    provider: Literal["stripe", "safepay", "paypal"]
 
 
 def _http(error: payments.PaymentError) -> HTTPException:
@@ -67,6 +69,7 @@ def payment_methods(
 @router.post("/payments/checkout", status_code=status.HTTP_201_CREATED)
 def start_checkout(
     payload: CheckoutIn,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -77,7 +80,8 @@ def start_checkout(
     )
     try:
         payment, redirect_url = payments.start_checkout(
-            db, current_user, payload.purpose, payload.reference_id, payload.provider
+            db, current_user, payload.purpose, payload.reference_id, payload.provider,
+            api_base=str(request.base_url),
         )
     except payments.PaymentError as error:
         raise _http(error) from None
@@ -126,6 +130,32 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
     try:
         result = payments.handle_stripe_webhook(db, payload, request.headers.get("stripe-signature", ""))
+    except payments.PaymentError as error:
+        raise _http(error) from None
+    return {"received": True, "result": result}
+
+
+@router.api_route("/payments/safepay/return", methods=["GET", "POST"], include_in_schema=False)
+def safepay_return(payment: str = Query("", max_length=64), cancelled: str = Query("", max_length=1)):
+    """
+    Safepay sends the customer's browser here after the payment page. Nothing
+    is decided here: the browser is forwarded to the web app, which asks the
+    server to check the payment. The target is always this site's own page.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9-]{1,64}", payment):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found.")
+    target = f"{settings.frontend_url.rstrip('/')}/payment/return?payment={payment}"
+    if cancelled == "1":
+        target += "&cancelled=1"
+    return RedirectResponse(target, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/payments/safepay/webhook", include_in_schema=False)
+async def safepay_webhook(request: Request, db: Session = Depends(get_db)):
+    """Safepay calls this URL. Authenticated by the X-SFPY-SIGNATURE header, not by a session."""
+    payload = await request.body()
+    try:
+        result = payments.handle_safepay_webhook(db, payload, request.headers.get("x-sfpy-signature", ""))
     except payments.PaymentError as error:
         raise _http(error) from None
     return {"received": True, "result": result}

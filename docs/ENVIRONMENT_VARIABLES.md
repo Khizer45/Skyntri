@@ -56,6 +56,9 @@ Setup steps for each provider: [INTEGRATIONS.md](INTEGRATIONS.md).
 | `LLM_IMAGE_ENABLED`, `GEMINI_IMAGE_MODEL`, `OPENAI_IMAGE_MODEL`, `CHAT_IMAGES_PER_DAY` | off, 10 per day | optional, billed per image | Illustrations in the assistant. Image models are never replaced automatically |
 | `CLINIC_NAME`, `CLINIC_TIMEZONE` | `Skyntri Clinic`, `Asia/Karachi` | set | Name on prescriptions and payments; doctors' working hours are in this time zone |
 | `APPOINTMENT_MIN_NOTICE_MINUTES`, `APPOINTMENT_MAX_DAYS_AHEAD`, `APPOINTMENT_BOOKINGS_PER_DAY` | 60, 60, 6 | as needed | Booking window and per-patient limit |
+| `CARD_PROVIDER` | `auto` | optional | Which company takes cards: `auto`, `safepay` or `stripe` |
+| `SAFEPAY_API_KEY`, `SAFEPAY_SECRET_KEY`, `SAFEPAY_WEBHOOK_SECRET`, `SAFEPAY_ENVIRONMENT` | empty, `sandbox` | secret | Card payments for a business in Pakistan. `sandbox` takes no real money |
+| `PUBLIC_API_URL` | empty | optional | Address of the API as browsers reach it; only needed when it cannot be taken from the request |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | empty | secret | Card payments. `sk_test_` keys take no real money |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE` | empty, `sandbox` | secret | PayPal. `PAYPAL_MODE=live` takes real money |
 | `PAYPAL_CURRENCY`, `PAYPAL_EXCHANGE_RATE` | `USD`, `0` | set when the shop currency is not supported by PayPal | Shop amount ÷ rate is charged in `PAYPAL_CURRENCY`. `0` keeps PayPal off for other currencies |

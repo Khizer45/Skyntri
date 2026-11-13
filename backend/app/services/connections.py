@@ -214,6 +214,43 @@ def _stripe() -> Result:
     )
 
 
+def _safepay() -> Result:
+    if not settings.safepay_configured:
+        return Result(NOT_SET_UP, "Set SAFEPAY_API_KEY and SAFEPAY_SECRET_KEY in .env.", [RESTART_NOTE])
+
+    mode = "production" if settings.safepay_live else "sandbox"
+    try:
+        # A short-lived token for the payment page: nothing is created or charged.
+        response = payments.safepay_request("POST", "/client/passport/v1/token")
+        accepted = response.ok and isinstance(response.json().get("data"), str)
+    except http_client.HttpError:
+        return Result(PROBLEM, "Safepay could not be reached from the server.")
+
+    if response.status in (401, 403):
+        return Result(PROBLEM, f"Safepay did not accept SAFEPAY_SECRET_KEY for the {mode} environment.",
+                      [f"Sandbox and production have different keys. SAFEPAY_ENVIRONMENT is {mode}."])
+    if not accepted:
+        return Result(PROBLEM, f"Safepay answered with an error (HTTP {response.status}).",
+                      [f"Safepay said: {llm.provider_error(response)}"])
+
+    currency = settings.shop_currency.upper()
+    if currency not in payments.SAFEPAY_CURRENCIES:
+        return Result(PROBLEM, f"Safepay accepted the secret key ({mode}), but it cannot charge {currency}.")
+
+    details = ["The public key (SAFEPAY_API_KEY) is only checked when the first payment is started."]
+    if not settings.safepay_webhook_secret:
+        details.append("SAFEPAY_WEBHOOK_SECRET is not set: a payment is confirmed only when the customer "
+                       "returns to the site after paying.")
+    if payments.card_provider(currency) != "safepay":
+        details.append("Card payments currently go through Stripe. Set CARD_PROVIDER=safepay to use Safepay.")
+    return Result(
+        WORKING,
+        "Safepay accepted the secret key (sandbox: no real card is charged)." if mode == "sandbox"
+        else "Safepay accepted the secret key (production: real cards are charged).",
+        details,
+    )
+
+
 def _paypal() -> Result:
     if not settings.paypal_configured:
         return Result(NOT_SET_UP, "Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in .env.", [RESTART_NOTE])
@@ -281,6 +318,7 @@ TESTS: dict[str, Callable[[], Result]] = {
     "assistant_images": _images,
     "google_sign_in": _google,
     "card_payments": _stripe,
+    "safepay": _safepay,
     "paypal": _paypal,
     "email": _email,
 }

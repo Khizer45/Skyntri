@@ -13,7 +13,8 @@ docker compose up -d
 | Google sign-in | "Continue with Google" | Free | `GOOGLE_CLIENT_ID` |
 | Google Gemini | Assistant answers, daily post text | Free tier, then paid | `LLM_ENABLED`, `GEMINI_API_KEY` |
 | Image model | Illustrations in the assistant | Paid per image | `LLM_IMAGE_ENABLED` |
-| Stripe | Card payments | No monthly fee, a fee per payment | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
+| Safepay | Card payments (business in Pakistan) | No setup or monthly fee, a fee per payment | `SAFEPAY_API_KEY`, `SAFEPAY_SECRET_KEY`, `SAFEPAY_WEBHOOK_SECRET` |
+| Stripe | Card payments (business outside Pakistan) | No monthly fee, a fee per payment | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
 | PayPal | PayPal payments | No monthly fee, a fee per payment | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE` |
 | E-mail (SMTP) | Password reset, appointment reminders | Free with Gmail | `SMTP_*` |
 | n8n | Automation workflows | Free when self-hosted | API key and webhook made in the admin panel |
@@ -54,11 +55,47 @@ Without it the assistant answers from built-in rules (still with tables for rout
 
 Voice input and read-aloud need no key: they use the browser (Chrome and Edge support Urdu speech recognition; Firefox has no speech recognition).
 
-## 3. Card payments with Stripe
+## 3. Card payments
 
-The customer pays on Stripe's page. Card numbers never reach Skyntri.
+The customer pays on the payment company's page. Card numbers never reach Skyntri.
 
-1. Create an account at https://dashboard.stripe.com. **Check first that Stripe supports businesses in your country**: it has not supported Pakistan-registered businesses. Test mode works for a demo in any case.
+### Which company?
+
+| Your business is registered in | Card payments | PayPal |
+|---|---|---|
+| Pakistan | **Safepay** (Visa and Mastercard, local and foreign cards, paid out in PKR) | Not possible: PayPal does not open accounts in Pakistan |
+| A country Stripe and PayPal support (for example UK, UAE, USA) | **Stripe** | PayPal Business account |
+
+Stripe and PayPal check where the business is registered when the account is opened, so this cannot be solved in the code. Some people register a company abroad to get both; that is a legal and tax decision, not a technical one.
+
+The checkout shows one **Card** button. `CARD_PROVIDER=auto` uses the company that has keys. With keys for both, Safepay is used for prices in PKR and Stripe otherwise; set `CARD_PROVIDER=safepay` or `stripe` to decide yourself.
+
+### Safepay (business in Pakistan)
+
+1. Sign up at https://getsafepay.com and complete the business verification (identity or company documents and a bank account). Safepay also has a sandbox for testing with made-up cards; ask for it or open it from the dashboard.
+2. In the dashboard, copy the **Merchant API key** (public) and the **Merchant secret key**. Sandbox and production each have their own pair.
+3. Open **Webhooks** in the dashboard (https://getsafepay.com/dashboard/webhooks for the live account) and click **Add an endpoint**:
+   * URL: `https://YOUR_API_DOMAIN/payments/safepay/webhook`
+   * Choose **Send me all events** (the server acts on `payment.succeeded` and ignores the rest).
+   * Click **Show shared secret** and copy it.
+4. In `.env`:
+
+```env
+SAFEPAY_API_KEY=sec_...
+SAFEPAY_SECRET_KEY=...
+SAFEPAY_WEBHOOK_SECRET=...
+SAFEPAY_ENVIRONMENT=sandbox
+```
+
+Use `SAFEPAY_ENVIRONMENT=production` with the keys of the live account. Sandbox and production have different keys.
+
+Without the webhook secret, a payment is confirmed only when the customer returns to the site after paying. With it, Safepay also tells the server directly, which covers a closed browser tab. Set it for real payments.
+
+Fees are set by Safepay per payment; check their current price list before going live. Refunds are made in the Safepay dashboard.
+
+### Stripe (business outside Pakistan)
+
+1. Create an account at https://dashboard.stripe.com. Stripe does not open accounts for businesses registered in Pakistan. Test mode works for a demo in any case.
 2. **Developers → API keys**: copy the **Secret key**. `sk_test_...` takes no real money; `sk_live_...` does.
 3. **Developers → Webhooks → Add endpoint**:
    * URL: `https://YOUR_API_DOMAIN/payments/stripe/webhook`
@@ -77,7 +114,7 @@ Without the webhook secret, a payment is confirmed only when the customer return
 
 ## 4. PayPal
 
-1. Open https://developer.paypal.com → **Apps & Credentials**. **Check that PayPal offers business accounts in your country**: it has not been available in Pakistan.
+1. Open https://developer.paypal.com → **Apps & Credentials**. PayPal does not open accounts in Pakistan, so real PayPal payments need a PayPal Business account in a supported country. The sandbox works for a demo anywhere.
 2. Create an app. Copy the **Client ID** and **Secret** of the *Sandbox* tab for testing, or of the *Live* tab for real payments.
 3. In `.env`:
 
@@ -96,9 +133,9 @@ PAYPAL_EXCHANGE_RATE=280
 
 `280` means 280 PKR = 1 USD. The button then shows the USD amount before the customer leaves the site. Update the rate when it changes. With rate `0`, PayPal stays off while the shop currency is PKR.
 
-**Local gateways.** Safepay, PayFast, JazzCash or Easypaisa can be added as another provider in `backend/app/services/payments.py`: create a checkout, send the browser there, then ask the provider whether it was paid.
+**More local methods.** JazzCash, Easypaisa or bank transfer (Raast) can be added as another provider in `backend/app/services/payments.py`, the same way Safepay is: create a checkout, send the browser there, then ask the provider whether it was paid.
 
-**Refunds** are made in the Stripe or PayPal dashboard. Afterwards mark the order or appointment as refunded in the admin panel.
+**Refunds** are made in the Safepay, Stripe or PayPal dashboard. Afterwards mark the order or appointment as refunded in the admin panel.
 
 ## 5. E-mail (password reset and reminders)
 

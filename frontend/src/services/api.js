@@ -1141,7 +1141,7 @@ export const cancelPayment = (id) => request(`/payments/${encodeURIComponent(id)
 export const adminListPayments = () => request('/admin/payments')
 
 // Only ever send the browser to the payment providers' own pages.
-const PAYMENT_HOSTS = /^(checkout\.stripe\.com|www\.paypal\.com|www\.sandbox\.paypal\.com)$/
+const PAYMENT_HOSTS = /^(checkout\.stripe\.com|getsafepay\.com|sandbox\.api\.getsafepay\.com|www\.paypal\.com|www\.sandbox\.paypal\.com)$/
 
 export function isSafePaymentUrl(url) {
   try {

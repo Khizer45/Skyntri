@@ -199,6 +199,7 @@ def _settings_payload(db: Session) -> dict:
         "integrations": {
             "google_sign_in": bool(settings.google_client_id),
             "card_payments": settings.stripe_configured,
+            "safepay": settings.safepay_configured,
             "paypal": settings.paypal_configured,
             "email": settings.smtp_configured,
             "assistant_llm": llm.text_available(),

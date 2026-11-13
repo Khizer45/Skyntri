@@ -169,7 +169,8 @@ def admin_api(api, monkeypatch):
     for name in ("llm_enabled", "llm_image_enabled"):
         monkeypatch.setattr(settings, name, False)
     for name in ("gemini_api_key", "openai_api_key", "google_client_id", "stripe_secret_key",
-                 "stripe_webhook_secret", "paypal_client_id", "paypal_client_secret", "smtp_host", "smtp_from"):
+                 "stripe_webhook_secret", "paypal_client_id", "paypal_client_secret", "smtp_host", "smtp_from",
+                 "safepay_api_key", "safepay_secret_key", "safepay_webhook_secret"):
         monkeypatch.setattr(settings, name, "")
     return client, register(client, "boss@test.com")
 
@@ -361,6 +362,35 @@ def test_paypal_connection(admin_api, monkeypatch):
     result = _test(client, admin, "paypal")
     assert result["state"] == "problem" and "for the sandbox environment" in result["summary"]
     assert "pp-secret" not in json.dumps(result)
+
+
+def test_safepay_connection(admin_api, monkeypatch):
+    client, admin = admin_api
+    monkeypatch.setattr(settings, "safepay_api_key", "sec_public")
+    monkeypatch.setattr(settings, "safepay_secret_key", "sfpy-secret")
+    monkeypatch.setattr(settings, "safepay_environment", "sandbox")
+    monkeypatch.setattr(settings, "shop_currency", "PKR")
+    monkeypatch.setattr(settings, "card_provider", "auto")
+    status = {"code": 200}
+
+    def safepay(method, url, *, headers=None, json_body=None, **kwargs):
+        assert (method, url) == ("POST", "https://sandbox.api.getsafepay.com/client/passport/v1/token")
+        assert headers == {"X-SFPY-MERCHANT-SECRET": "sfpy-secret"}
+        return _json(status["code"], {"data": "tbt-token"} if status["code"] == 200 else {"error": "unauthorized"})
+
+    monkeypatch.setattr(http_client, "send", safepay)
+    result = _test(client, admin, "safepay")
+    assert result["state"] == "working" and "sandbox" in result["summary"]
+    assert any("SAFEPAY_WEBHOOK_SECRET is not set" in line for line in result["details"])
+
+    status["code"] = 401
+    result = _test(client, admin, "safepay")
+    assert result["state"] == "problem" and "did not accept SAFEPAY_SECRET_KEY" in result["summary"]
+    assert "sfpy-secret" not in json.dumps(result)
+
+    status["code"] = 200
+    monkeypatch.setattr(settings, "shop_currency", "INR")
+    assert "cannot charge INR" in _test(client, admin, "safepay")["summary"]
 
 
 class FakeMailServer:

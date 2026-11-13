@@ -25,6 +25,7 @@ class FakeProviders:
     def __init__(self):
         self.stripe_sessions: dict[str, dict] = {}
         self.paypal_orders: dict[str, dict] = {}
+        self.safepay_trackers: dict[str, dict] = {}
         self.calls: list[tuple[str, str]] = []
 
     def send(self, method, url, *, headers=None, json_body=None, form=None, data=None, timeout=15.0):
@@ -68,6 +69,24 @@ class FakeProviders:
                 "payments": {"captures": [{"status": "COMPLETED", "custom_id": order["unit"]["custom_id"],
                                            "amount": order["unit"]["amount"]}]} if order["status"] == "COMPLETED" else {},
                 "amount": order["unit"]["amount"]}]})
+
+        if "getsafepay.com" in url:
+            assert url.startswith("https://sandbox.api.getsafepay.com/")
+            assert headers["X-SFPY-MERCHANT-SECRET"] == "sfpy-secret"
+            path = url.split("getsafepay.com", 1)[1]
+            if method == "POST" and path == "/order/payments/v3/":
+                assert json_body["merchant_api_key"] == "sec_public" and json_body["mode"] == "payment"
+                token = f"track_{len(self.safepay_trackers) + 1}"
+                self.safepay_trackers[token] = {"state": "TRACKER_STARTED", "body": json_body}
+                return reply(201, {"data": {"tracker": {"token": token, "state": "TRACKER_STARTED"}}})
+            if method == "POST" and path == "/client/passport/v1/token":
+                return reply(200, {"data": "tbt-token"})
+            if method == "GET" and path.startswith("/reporter/api/v2/payments/"):
+                token = path.rsplit("/", 1)[1]
+                tracker = self.safepay_trackers[token]
+                # The billing address also has a "state": it must not be mistaken for the tracker's.
+                return reply(200, {"data": {"token": token, "state": tracker["state"],
+                                            "customer": {"address": {"state": "Sindh"}}}})
 
         raise AssertionError(f"unexpected request {method} {url}")
 
@@ -250,3 +269,125 @@ def test_signature_helper_rejects_malformed_headers():
     assert not payments.verify_stripe_signature(b"{}", "", "secret")
     assert not payments.verify_stripe_signature(b"{}", "t=abc,v1=00", "secret")
     assert not payments.verify_stripe_signature(b"{}", "v1=00", "secret")
+
+
+# ============================================================
+# Safepay (card payments for a business registered in Pakistan)
+# ============================================================
+
+@pytest.fixture
+def safepay_shop(shop, monkeypatch):
+    monkeypatch.setattr(settings, "stripe_secret_key", "")
+    monkeypatch.setattr(settings, "safepay_api_key", "sec_public")
+    monkeypatch.setattr(settings, "safepay_secret_key", "sfpy-secret")
+    monkeypatch.setattr(settings, "safepay_webhook_secret", "sfpy-hook")
+    monkeypatch.setattr(settings, "safepay_environment", "sandbox")
+    monkeypatch.setattr(settings, "card_provider", "auto")
+    monkeypatch.setattr(settings, "public_api_url", "")
+    return shop
+
+
+def test_card_company_is_chosen_from_the_keys(safepay_shop, monkeypatch):
+    client, _, _, buyer, order = safepay_shop
+    params = {"purpose": "order", "reference_id": order["id"]}
+    card = client.get("/payments/methods", params=params, headers=buyer).json()["methods"][0]
+    assert (card["id"], card["label"], card["available"], card["test_mode"]) == ("safepay", "Card", True, True)
+    # Only the card company in use can be chosen.
+    assert _checkout(client, buyer, order, "stripe").status_code == 409
+
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_test_abc")
+    assert payments.card_provider("PKR") == "safepay" and payments.card_provider("USD") == "stripe"
+    monkeypatch.setattr(settings, "card_provider", "stripe")
+    assert payments.card_provider("PKR") == "stripe"
+    monkeypatch.setattr(settings, "card_provider", "safepay")
+    monkeypatch.setattr(settings, "safepay_secret_key", "")
+    assert payments.card_provider("PKR") == "stripe"  # the wanted one has no keys
+
+
+def test_safepay_payment_is_confirmed_by_safepay_not_by_the_browser(safepay_shop):
+    client, fake, _, buyer, order = safepay_shop
+    started = _checkout(client, buyer, order, "safepay")
+    assert started.status_code == 201, started.text
+    payment = started.json()["payment"]
+    tracker, created = next(iter(fake.safepay_trackers.items()))
+    assert created["body"]["amount"] == 240000 and created["body"]["currency"] == "PKR"  # paisa
+
+    url = started.json()["redirect_url"]
+    assert url.startswith("https://sandbox.api.getsafepay.com/embedded/?")
+    query = parse_qs(url.split("?", 1)[1])
+    assert query["tracker"] == [tracker] and query["tbt"] == ["tbt-token"] and query["environment"] == ["sandbox"]
+    # Safepay returns the customer to the API, which forwards to the web app.
+    assert query["redirect_url"] == [f"http://testserver/payments/safepay/return?payment={payment['id']}"]
+    assert query["cancel_url"] == [query["redirect_url"][0] + "&cancelled=1"]
+
+    for method in ("get", "post"):
+        back = getattr(client, method)(query["redirect_url"][0], follow_redirects=False)
+        assert back.status_code == 303
+        assert back.headers["location"] == f"{settings.frontend_url}/payment/return?payment={payment['id']}"
+    assert client.get("/payments/safepay/return?payment=x&cancelled=1", follow_redirects=False).headers[
+        "location"].endswith("payment=x&cancelled=1")
+    assert client.get("/payments/safepay/return?payment=https://evil.example", follow_redirects=False).status_code == 404
+
+    # Returning without paying changes nothing.
+    assert client.post(f"/payments/{payment['id']}/confirm", headers=buyer).json()["status"] == "created"
+    assert _order(client, buyer, order)["payment_status"] == "unpaid"
+
+    fake.safepay_trackers[tracker]["state"] = "TRACKER_ENDED"
+    assert client.post(f"/payments/{payment['id']}/confirm", headers=buyer).json()["status"] == "succeeded"
+    paid = _order(client, buyer, order)
+    assert paid["payment_status"] == "paid" and paid["payment_method"] == "card"
+
+
+def _safepay_event(tracker: str, kind: str = "payment.succeeded", secret: str = "sfpy-hook", spaced: bool = False):
+    body = {"type": kind, "data": {"tracker": tracker, "state": "TRACKER_ENDED", "metadata": {"order_id": "x"}}}
+    raw = json.dumps(body, separators=(",", ":")).encode()
+    signature = hmac.new(secret.encode(), raw, hashlib.sha512).hexdigest()
+    sent = json.dumps(body, indent=2).encode() if spaced else raw
+    return sent, {"X-SFPY-SIGNATURE": signature, "Content-Type": "application/json"}
+
+
+def test_safepay_webhook_needs_a_valid_signature(safepay_shop, monkeypatch):
+    client, fake, _, buyer, order = safepay_shop
+    payment = _checkout(client, buyer, order, "safepay").json()["payment"]
+    tracker = next(iter(fake.safepay_trackers))
+
+    body, headers = _safepay_event(tracker, secret="wrong")
+    assert client.post("/payments/safepay/webhook", content=body, headers=headers).status_code == 400
+    assert client.post("/payments/safepay/webhook", content=body).status_code == 400
+    assert _order(client, buyer, order)["payment_status"] == "unpaid"
+
+    body, headers = _safepay_event(tracker, kind="payment.failed")
+    assert client.post("/payments/safepay/webhook", content=body, headers=headers).json()["result"] == "ignored"
+    body, headers = _safepay_event("track_unknown")
+    assert client.post("/payments/safepay/webhook", content=body, headers=headers).json()["result"] == "unknown"
+    assert _order(client, buyer, order)["payment_status"] == "unpaid"
+
+    # Signed over the compact form, delivered with other spacing: still accepted.
+    body, headers = _safepay_event(tracker, spaced=True)
+    assert client.post("/payments/safepay/webhook", content=body, headers=headers).json()["result"] == "succeeded"
+    assert _order(client, buyer, order)["payment_status"] == "paid"
+    # A repeated delivery changes nothing.
+    assert client.post("/payments/safepay/webhook", content=body, headers=headers).json()["result"] == "succeeded"
+    assert client.post(f"/payments/{payment['id']}/confirm", headers=buyer).json()["status"] == "succeeded"
+
+    monkeypatch.setattr(settings, "safepay_webhook_secret", "")
+    assert client.post("/payments/safepay/webhook", content=body, headers=headers).status_code == 503
+
+
+def test_safepay_outage_and_odd_answers(safepay_shop, monkeypatch):
+    client, fake, _, buyer, order = safepay_shop
+
+    def broken(method, url, **kwargs):
+        if url.endswith("/client/passport/v1/token"):
+            return http_client.HttpResponse(200, b'{"data": {"unexpected": true}}')
+        return fake.send(method, url, **kwargs)
+
+    monkeypatch.setattr(http_client, "send", broken)
+    assert _checkout(client, buyer, order, "safepay").status_code == 502
+
+    def offline(*args, **kwargs):
+        raise http_client.HttpError("Request failed")
+
+    monkeypatch.setattr(http_client, "send", offline)
+    assert _checkout(client, buyer, order, "safepay").status_code == 502
+    assert _order(client, buyer, order)["payment_status"] == "unpaid"

@@ -225,8 +225,22 @@ class Settings(BaseSettings):
     consultation_messages_per_hour: int = 120
 
     # ========================================================================
-    # Online payments (card through Stripe, PayPal)
+    # Online payments (card through Safepay or Stripe, PayPal)
     # ========================================================================
+
+    # Which company takes card payments: "safepay", "stripe" or "auto".
+    # auto = the one that has keys; with both, Safepay for PKR prices.
+    card_provider: str = "auto"
+
+    # Safepay: card payments for businesses registered in Pakistan.
+    safepay_api_key: str = ""        # public key
+    safepay_secret_key: str = ""
+    safepay_webhook_secret: str = ""
+    safepay_environment: str = "sandbox"  # "sandbox" or "production"
+
+    # Address of this API as browsers and payment companies reach it. Empty =
+    # taken from the request (correct behind the Caddy setup in this project).
+    public_api_url: str = ""
 
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
@@ -292,6 +306,14 @@ class Settings(BaseSettings):
     @property
     def stripe_configured(self) -> bool:
         return bool(self.stripe_secret_key)
+
+    @property
+    def safepay_configured(self) -> bool:
+        return bool(self.safepay_api_key and self.safepay_secret_key)
+
+    @property
+    def safepay_live(self) -> bool:
+        return self.safepay_environment.strip().lower() in {"production", "live"}
 
     @property
     def paypal_configured(self) -> bool:
@@ -416,6 +438,15 @@ def validate_for_startup(config: Settings) -> list[str]:
 
         if config.paypal_configured and config.paypal_mode.strip().lower() != "live":
             warnings.append("PAYPAL_MODE is sandbox: no real payment is taken")
+
+        if config.safepay_configured and not config.safepay_live:
+            warnings.append("SAFEPAY_ENVIRONMENT is sandbox: no real card is charged")
+
+        if config.safepay_configured and not config.safepay_webhook_secret:
+            warnings.append(
+                "SAFEPAY_WEBHOOK_SECRET is not set: card payments are only confirmed "
+                "when the customer returns to the site"
+            )
 
         if problems:
             raise ConfigurationError(

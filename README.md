@@ -67,7 +67,7 @@ Tests: `cd backend && pytest -q`. See [backend/README.md](backend/README.md) and
 
 * **Dermatologists:** doctors apply, an administrator checks the licence and approves. Patients book a free time, can share a skin analysis, message the doctor and download the prescription as a PDF. Doctors get a portal with their appointments, patients, working hours and a prescription editor.
 * **Accounts:** name, mobile number, e-mail and password under Settings; optional "Continue with Google".
-* **Payments:** card (Stripe) and PayPal for orders and consultation fees, next to cash on delivery. The customer pays on the provider's page; card numbers never reach Skyntri.
+* **Payments:** card (Safepay for a business in Pakistan, or Stripe) and PayPal for orders and consultation fees, next to cash on delivery. The customer pays on the provider's page; card numbers never reach Skyntri.
 * **Assistant:** chat layout with Markdown tables, voice input, read-aloud, answers in English, Urdu or Roman Urdu, and optional illustrations.
 * **Camera:** take the photo in the browser instead of uploading a file.
 * **Agents and automation:** daily clinic report, appointment reminders and a daily skin-care post; signed webhooks and an API-key API for n8n, Zapier or your own agents; two n8n workflows included.

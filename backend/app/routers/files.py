@@ -25,7 +25,7 @@ _MEDIA_TYPES = {
     ".webp": "image/webp",
 }
 
-_SERVABLE_FOLDERS = {"analyses", "avatars", "progress", "ingredient_scans", "ingredients_scans", "products"}
+_SERVABLE_FOLDERS = {"analyses", "avatars", "progress", "ingredient_scans", "ingredients_scans", "products", "chat_images"}
 
 
 @router.get("/products/{filename}")

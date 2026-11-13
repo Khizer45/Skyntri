@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import EmptyState from '../components/EmptyState.jsx'
 import { Spinner } from '../components/LoadingState.jsx'
 import { useToast } from '../context/ToastContext.jsx'
-import DashboardLayout from '../layouts/DashboardLayout.jsx'
+import AdminLayout from '../layouts/AdminLayout.jsx'
 import * as api from '../services/api.js'
 import { OrderSummary } from './Orders.jsx'
 
@@ -48,7 +48,7 @@ export default function AdminOrders() {
   }
 
   return (
-    <DashboardLayout title="Orders & Payments" subtitle="Confirm, ship and deliver orders; record cash payments">
+    <AdminLayout title="Orders">
       <div className="mb-4 flex items-center gap-2">
         <label className="text-sm text-neutral-600 dark:text-neutral-300">Status</label>
         <select
@@ -103,6 +103,6 @@ export default function AdminOrders() {
           </OrderSummary>
         ))}
       </div>
-    </DashboardLayout>
+    </AdminLayout>
   )
 }

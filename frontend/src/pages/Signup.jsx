@@ -2,6 +2,7 @@ import { Eye, EyeOff, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Button from '../components/Button.jsx'
+import GoogleButton from '../components/GoogleButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import AuthLayout from '../layouts/AuthLayout.jsx'
@@ -15,7 +16,7 @@ export default function Signup() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const { register } = useAuth()
+  const { register, loginWithGoogle } = useAuth()
   const { showToast } = useToast()
   const navigate = useNavigate()
 
@@ -48,6 +49,19 @@ export default function Signup() {
 
   return (
     <AuthLayout title="Create your account" subtitle="Start tracking your skin health with Skyntri">
+      <GoogleButton
+        onError={setError}
+        onCredential={async (credential) => {
+          setError('')
+          try {
+            await loginWithGoogle(credential)
+            showToast('Welcome to Skyntri.', 'success')
+            navigate('/dashboard', { replace: true })
+          } catch (err) {
+            setError(err.message || 'Google sign-in failed.')
+          }
+        }}
+      />
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div>
           <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">

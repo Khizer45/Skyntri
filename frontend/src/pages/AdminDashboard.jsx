@@ -15,7 +15,7 @@ import Card from '../components/Card.jsx'
 import { Spinner } from '../components/LoadingState.jsx'
 import { formatPrice } from '../components/ProductCard.jsx'
 import { useToast } from '../context/ToastContext.jsx'
-import DashboardLayout from '../layouts/DashboardLayout.jsx'
+import AdminLayout from '../layouts/AdminLayout.jsx'
 import * as api from '../services/api.js'
 import { STATUS_STYLES } from './Orders.jsx'
 
@@ -48,7 +48,7 @@ export default function AdminDashboard() {
   }, [showToast])
 
   return (
-    <DashboardLayout title="Admin overview" subtitle="Products, orders, payments and users at a glance">
+    <AdminLayout title="Overview">
       {!stats && <Spinner label="Loading statistics…" />}
       {stats && (
         <>
@@ -108,6 +108,16 @@ export default function AdminDashboard() {
                 })}
               </Card>
               <Card className="space-y-3 p-5 text-sm">
+                {stats.clinic && (
+                  <>
+                    <p className="flex items-center gap-2"><Users className="h-4 w-4 text-brand-600" /> {stats.clinic.doctors} doctor(s) · {stats.clinic.appointments_upcoming} upcoming appointment(s)</p>
+                    {stats.clinic.doctors_pending > 0 && (
+                      <Link to="/admin/doctors" className="flex items-center gap-2 text-amber-700 hover:underline dark:text-amber-300">
+                        <Clock className="h-4 w-4" /> {stats.clinic.doctors_pending} doctor application(s) to review
+                      </Link>
+                    )}
+                  </>
+                )}
                 <p className="flex items-center gap-2"><ScanFace className="h-4 w-4 text-brand-600" /> {stats.analyses.total} skin analyses ({stats.analyses.last_7d} this week)</p>
                 <p className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-brand-600" /> {stats.contact_messages} contact messages</p>
                 <p className="flex items-center gap-2"><PackageCheck className="h-4 w-4 text-brand-600" /> {formatPrice(stats.payments.refunded, stats.currency)} refunded</p>
@@ -126,6 +136,6 @@ export default function AdminDashboard() {
           </div>
         </>
       )}
-    </DashboardLayout>
+    </AdminLayout>
   )
 }

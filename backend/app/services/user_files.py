@@ -22,6 +22,7 @@ def collect_user_file_refs(user: User) -> list[str]:
         refs.extend([check.before_image_url, check.after_image_url])
 
     refs.extend(f"report-file:{r.file_path}" for r in user.reports if r.file_path)
+    refs.extend(m.image_url for m in user.chat_messages if m.image_url)
 
     return refs
 

@@ -5,7 +5,7 @@ import Card from '../components/Card.jsx'
 import { Spinner } from '../components/LoadingState.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
-import DashboardLayout from '../layouts/DashboardLayout.jsx'
+import AdminLayout from '../layouts/AdminLayout.jsx'
 import * as api from '../services/api.js'
 
 export default function AdminUsers() {
@@ -31,7 +31,7 @@ export default function AdminUsers() {
   }
 
   return (
-    <DashboardLayout title="Users" subtitle="Give or remove admin access, deactivate accounts">
+    <AdminLayout title="Users">
       <form onSubmit={(e) => { e.preventDefault(); load(q) }} className="mb-4 flex max-w-md gap-2">
         <input className="field" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or e-mail" />
         <Button type="submit" icon={Search}>Search</Button>
@@ -88,6 +88,6 @@ export default function AdminUsers() {
           </table>
         </Card>
       )}
-    </DashboardLayout>
+    </AdminLayout>
   )
 }

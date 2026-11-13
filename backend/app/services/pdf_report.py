@@ -650,15 +650,6 @@ def generate_report_pdf(
         )
     )
 
-    story.append(
-        Paragraph(
-            (
-                "Skyntri — Final Year Project, Department of "
-                "Software Engineering, MUST."
-            ),
-            small_style,
-        )
-    )
 
     # ---------------------------------------------------------
     # Build PDF

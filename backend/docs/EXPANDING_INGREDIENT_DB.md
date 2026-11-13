@@ -3,13 +3,13 @@
 The database ships with **167 curated, commonly-used skincare ingredients**
 (`app/services/ingredient_data.py`), each with an accurate function
 description, safety status, skin-type suitability, and usage notes. That's
-a solid working set for a demo/FYP, but it's intentionally *not* pretending
+a solid working set, but it's intentionally *not* pretending
 to be a 1000+-ingredient regulatory database — hand-authoring safety
 verdicts for a thousand+ individual chemicals one-by-one risks getting some
 wrong, which isn't acceptable for anything health-adjacent.
 
-If you want to grow the database toward (or past) 1000 entries for a fuller
-FYP demo, here's the safe way to do it — bulk import from an existing,
+If you want to grow the database toward (or past) 1000 entries,
+here's the safe way to do it — bulk import from an existing,
 vetted public source, rather than typing out one-off entries by hand.
 
 ## Option 1 — Bulk import from a public ingredient database (recommended)

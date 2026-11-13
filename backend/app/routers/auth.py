@@ -16,18 +16,20 @@ from app.core.security import (
     verify_password,
 )
 from app.db.database import get_db
-from app.db.models import PasswordResetToken, User
+from app.db.models import Appointment, DoctorProfile, PasswordResetToken, User
 from app.dependencies import get_current_user
 from app.schemas import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
+    GoogleLoginRequest,
     LoginRequest,
     RegisterRequest,
     ResetPasswordRequest,
+    SetPasswordRequest,
     TokenResponse,
     UserOut,
 )
-from app.services import rate_limit
+from app.services import google_auth, rate_limit
 from app.services.email import EmailDeliveryError, send_password_reset_email
 from app.services.user_files import collect_user_file_refs, remove_files
 
@@ -248,6 +250,9 @@ def reset_password(payload: ResetPasswordRequest, request: Request, db: Session 
         raise invalid
 
     user.password_hash = hash_password(payload.new_password)
+    # The link was sent to the address, so the address is proven.
+    user.password_set = True
+    user.email_verified = True
     reset.used = True
 
     # Invalidate any other outstanding links for this account.
@@ -268,6 +273,11 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if not current_user.password_set:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This account has no password yet. Choose one under Settings first.",
+        )
     if not verify_password(payload.current_password, current_user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is incorrect.")
 
@@ -276,9 +286,115 @@ def change_password(
     return {"message": "Password updated successfully."}
 
 
+@router.post("/set-password")
+def set_password(
+    payload: SetPasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Choose a first password for an account that was created with Google."""
+    if current_user.password_set:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This account already has a password. Use 'Change password'.",
+        )
+
+    current_user.password_hash = hash_password(payload.new_password)
+    current_user.password_set = True
+    db.commit()
+    return {"message": "Password saved. You can now also sign in with your e-mail and password."}
+
+
+# ============================================================
+# Sign in with Google
+# ============================================================
+
+def _unusable_password_hash() -> str:
+    return hash_password(generate_opaque_token())
+
+
+@router.post("/google", response_model=TokenResponse)
+def google_login(payload: GoogleLoginRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Exchange a Google ID token for a Skyntri session.
+
+    * The token is verified on the server (signature, audience, issuer,
+      expiry, verified e-mail). Nothing else from the browser is trusted.
+    * An existing account with the same verified address is linked. If that
+      account never proved its address, its password is discarded, so
+      someone who registered the address first cannot keep access.
+    """
+    if not settings.google_client_id:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Sign in with Google is not set up.")
+
+    rate_limit.enforce(
+        db,
+        "google_login_ip",
+        rate_limit.client_ip(request),
+        settings.login_ip_max_attempts,
+        timedelta(minutes=settings.login_window_minutes),
+        message="Too many sign-in attempts from this network. Please try again later.",
+    )
+
+    try:
+        identity = google_auth.verify_id_token(payload.credential)
+    except google_auth.GoogleAuthUnavailable:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Google sign-in is temporarily unavailable."
+        ) from None
+    except google_auth.GoogleAuthError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Google sign-in failed. Please try again.") from None
+
+    user = db.query(User).filter(User.google_sub == identity["sub"]).first()
+
+    if user is None:
+        user = _find_user(db, identity["email"])
+        if user is not None:
+            if user.google_sub and user.google_sub != identity["sub"]:
+                raise HTTPException(status.HTTP_409_CONFLICT, "This e-mail is linked to another Google account.")
+            if not user.email_verified:
+                user.password_hash = _unusable_password_hash()
+                user.password_set = False
+            user.google_sub = identity["sub"]
+            user.email_verified = True
+        else:
+            user = User(
+                full_name=identity["name"] or identity["email"].split("@")[0],
+                email=identity["email"],
+                password_hash=_unusable_password_hash(),
+                password_set=False,
+                email_verified=True,
+                google_sub=identity["sub"],
+                is_active=True,
+                role="user",
+            )
+            db.add(user)
+
+    if not user.is_active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been deactivated.")
+
+    _apply_admin_bootstrap(user)
+    db.commit()
+    db.refresh(user)
+
+    return TokenResponse(access_token=create_access_token(subject=user.id), user=UserOut.model_validate(user))
+
+
 @router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """REQ-6.9 / SEC-DATA-005: delete the account, its records and its files."""
+    doctor = db.query(DoctorProfile).filter(DoctorProfile.user_id == current_user.id).first()
+    if doctor is not None:
+        has_patients = db.query(Appointment.id).filter(Appointment.doctor_id == doctor.id).first()
+        if has_patients:
+            # Patients keep their consultation history and prescriptions.
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "A doctor account with appointments cannot be deleted here. "
+                "Please ask the clinic administrator to close it.",
+            )
+        db.delete(doctor)
+
     file_refs = collect_user_file_refs(current_user)
 
     db.query(PasswordResetToken).filter(PasswordResetToken.user_id == current_user.id).delete(

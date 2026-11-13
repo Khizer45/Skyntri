@@ -12,6 +12,16 @@ from app.db.database import Base, get_db
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def _fresh_llm_state():
+    """The model list and a chosen replacement model are cached in the process."""
+    from app.services import llm
+
+    llm.reset()
+    yield
+    llm.reset()
+
+
 @pytest.fixture
 def api(tmp_path, monkeypatch):
     """
@@ -44,6 +54,8 @@ def api(tmp_path, monkeypatch):
     # Model files are not in the repository; API tests use fakes for inference.
     monkeypatch.setattr("app.routers.analyses.model_artifact_available", lambda: True)
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    # Webhooks are delivered in the request thread so tests can assert on them.
+    monkeypatch.setattr("app.services.automation.DELIVERY_MODE", "inline")
 
     try:
         with TestClient(app) as client:

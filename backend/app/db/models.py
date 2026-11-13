@@ -9,6 +9,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
 )
@@ -84,13 +85,31 @@ class User(Base):
         nullable=False,
     )
 
-    # Server-side role (SEC-AUTH-003). "user" or "admin". Never taken from
-    # client input; granted through ADMIN_EMAILS or a database update.
+    # Server-side role (SEC-AUTH-003): "user" (patient), "doctor" or "admin".
+    # Never taken from client input. "admin" is granted through ADMIN_EMAILS
+    # or the CLI, "doctor" when an administrator approves a doctor profile.
     role: Mapped[str] = mapped_column(
         String,
         default="user",
         server_default="user",
         nullable=False,
+    )
+
+    phone: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Google account id ("sub") when the account is linked to Google sign-in.
+    google_sub: Mapped[str | None] = mapped_column(String, nullable=True, unique=True, index=True)
+
+    # False for accounts created with Google that have not chosen a password
+    # yet (their password_hash is a random, unusable value).
+    password_set: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="1", nullable=False
+    )
+
+    # True once the address is proven (Google sign-in). E-mail/password
+    # sign-up does not verify the address.
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
     )
 
     # Notification preferences
@@ -149,6 +168,21 @@ class User(Base):
     orders: Mapped[list["Order"]] = relationship(
         cascade="all, delete-orphan",
     )
+
+    # Clinic data of a patient is removed with the account as well.
+    appointments: Mapped[list["Appointment"]] = relationship(
+        cascade="all, delete-orphan",
+        foreign_keys="Appointment.patient_id",
+        overlaps="patient",
+    )
+
+    payments: Mapped[list["Payment"]] = relationship(
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def google_linked(self) -> bool:
+        return bool(self.google_sub)
 
 
 # ============================================================
@@ -788,6 +822,12 @@ class ChatMessage(Base):
         nullable=False,
     )
 
+    # Private upload reference of a generated illustration, if any.
+    image_url: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,
@@ -968,3 +1008,335 @@ class OrderItem(Base):
     line_total: Mapped[float] = mapped_column(Float, nullable=False)
 
     order: Mapped["Order"] = relationship(back_populates="items")
+
+
+# ============================================================
+# Runtime settings and audit trail
+# ============================================================
+
+class AppSetting(Base):
+    """Settings an administrator can change while the app is running."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
+class AuditEvent(Base):
+    """Who did what: administrator, doctor and automation actions."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    # User id, or "api_key:<id>" / "system" for automation.
+    actor: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    target: Mapped[str | None] = mapped_column(String, nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False, index=True
+    )
+
+
+# ============================================================
+# Clinic: doctors, appointments, prescriptions
+# ============================================================
+
+class DoctorProfile(Base):
+    """
+    A dermatologist's public profile. A user applies, an administrator
+    checks the licence and approves; only approved doctors are listed and
+    can be booked.
+    """
+
+    __tablename__ = "doctor_profiles"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False, unique=True)
+
+    specialty: Mapped[str] = mapped_column(String, nullable=False, default="Dermatology")
+    qualifications: Mapped[str] = mapped_column(String, nullable=False)
+    license_number: Mapped[str] = mapped_column(String, nullable=False)
+    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    languages: Mapped[str | None] = mapped_column(String, nullable=True)
+    years_experience: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    consultation_fee: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    currency: Mapped[str] = mapped_column(String, default="PKR", nullable=False)
+    slot_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+
+    # pending -> approved | rejected ; approved <-> suspended
+    status: Mapped[str] = mapped_column(String, default="pending", nullable=False, index=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    user: Mapped["User"] = relationship()
+    availability: Mapped[list["DoctorAvailability"]] = relationship(
+        back_populates="doctor", cascade="all, delete-orphan"
+    )
+
+
+class DoctorAvailability(Base):
+    """Weekly working hours in the clinic time zone (CLINIC_TIMEZONE)."""
+
+    __tablename__ = "doctor_availability"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    doctor_id: Mapped[str] = mapped_column(String, ForeignKey("doctor_profiles.id"), nullable=False, index=True)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)  # 0 = Monday
+    start_time: Mapped[str] = mapped_column(String, nullable=False)  # "HH:MM"
+    end_time: Mapped[str] = mapped_column(String, nullable=False)
+
+    doctor: Mapped["DoctorProfile"] = relationship(back_populates="availability")
+
+    __table_args__ = (
+        Index("ux_availability_slot", "doctor_id", "weekday", "start_time", unique=True),
+    )
+
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    patient_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False, index=True)
+    doctor_id: Mapped[str] = mapped_column(String, ForeignKey("doctor_profiles.id"), nullable=False, index=True)
+
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # requested -> confirmed -> completed | no_show ; requested/confirmed -> cancelled
+    status: Mapped[str] = mapped_column(String, default="requested", nullable=False, index=True)
+    # "<doctor id>|<start>" while the slot is taken, NULL once cancelled. The
+    # unique index makes double booking impossible, also across workers.
+    slot_lock: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+
+    mode: Mapped[str] = mapped_column(String, default="video", nullable=False)  # video | chat | in_person
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    # A skin analysis the patient chose to show the doctor.
+    analysis_id: Mapped[str | None] = mapped_column(String, ForeignKey("skin_analyses.id"), nullable=True)
+    meeting_url: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    fee: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    currency: Mapped[str] = mapped_column(String, default="PKR", nullable=False)
+    payment_status: Mapped[str] = mapped_column(String, default="unpaid", nullable=False, index=True)
+    payment_method: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Written by the doctor; the patient sees the assessment and follow-up.
+    assessment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    private_notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # doctor only
+    follow_up_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    cancelled_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    patient: Mapped["User"] = relationship(foreign_keys=[patient_id])
+    doctor: Mapped["DoctorProfile"] = relationship()
+    prescription: Mapped["Prescription | None"] = relationship(
+        back_populates="appointment", cascade="all, delete-orphan", uselist=False
+    )
+    messages: Mapped[list["ConsultationMessage"]] = relationship(
+        cascade="all, delete-orphan", order_by="ConsultationMessage.created_at"
+    )
+
+    __table_args__ = (
+        Index("ix_appointments_doctor_start", "doctor_id", "starts_at"),
+        Index("ix_appointments_patient_start", "patient_id", "starts_at"),
+    )
+
+
+class Prescription(Base):
+    """Medicines, treatments and skin-care advice written by the doctor."""
+
+    __tablename__ = "prescriptions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    appointment_id: Mapped[str] = mapped_column(
+        String, ForeignKey("appointments.id"), nullable=False, unique=True
+    )
+    advice: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    appointment: Mapped["Appointment"] = relationship(back_populates="prescription")
+    items: Mapped[list["PrescriptionItem"]] = relationship(
+        back_populates="prescription", cascade="all, delete-orphan", order_by="PrescriptionItem.position"
+    )
+
+
+class PrescriptionItem(Base):
+    __tablename__ = "prescription_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    prescription_id: Mapped[str] = mapped_column(
+        String, ForeignKey("prescriptions.id"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    kind: Mapped[str] = mapped_column(String, default="medicine", nullable=False)  # medicine | treatment | skincare
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    dosage: Mapped[str | None] = mapped_column(String, nullable=True)
+    frequency: Mapped[str | None] = mapped_column(String, nullable=True)
+    duration: Mapped[str | None] = mapped_column(String, nullable=True)
+    instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    prescription: Mapped["Prescription"] = relationship(back_populates="items")
+
+
+class ConsultationMessage(Base):
+    """Messages between the patient and the doctor of one appointment."""
+
+    __tablename__ = "consultation_messages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    appointment_id: Mapped[str] = mapped_column(
+        String, ForeignKey("appointments.id"), nullable=False, index=True
+    )
+    sender_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+# ============================================================
+# Payments
+# ============================================================
+
+class Payment(Base):
+    """
+    One attempt to pay an order or an appointment with an online provider.
+    Card numbers never reach this application: the customer pays on the
+    provider's page and only the provider's reference is stored.
+    """
+
+    __tablename__ = "payments"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(String, nullable=False)  # order | appointment
+    reference_id: Mapped[str] = mapped_column(String, nullable=False)
+    provider: Mapped[str] = mapped_column(String, nullable=False)  # stripe | paypal
+    provider_ref: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+
+    # Amount due in the shop currency, and what the provider was asked to charge.
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(String, nullable=False)
+    charged_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    charged_currency: Mapped[str] = mapped_column(String, nullable=False)
+
+    # created -> succeeded | failed | cancelled ; succeeded -> refunded
+    status: Mapped[str] = mapped_column(String, default="created", nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_payments_purpose_reference", "purpose", "reference_id"),
+    )
+
+
+# ============================================================
+# Automation: API keys, webhooks, agents, clinic posts
+# ============================================================
+
+class ApiKey(Base):
+    """Key for automation tools (n8n, Zapier, custom agents). Only a hash is stored."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    prefix: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    key_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    scopes: Mapped[str] = mapped_column(Text, nullable=False, default="")  # comma-separated
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WebhookEndpoint(Base):
+    """A URL that receives signed event notifications (n8n / Zapier webhook)."""
+
+    __tablename__ = "webhook_endpoints"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    url: Mapped[str] = mapped_column(String, nullable=False)
+    events: Mapped[str] = mapped_column(Text, nullable=False, default="*")  # comma-separated or "*"
+    # Include the patient's name, e-mail and phone in appointment events
+    # (needed for reminder workflows). Off: only ids are sent.
+    include_contact: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_delivery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    failure_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    endpoint_id: Mapped[str] = mapped_column(
+        String, ForeignKey("webhook_endpoints.id"), nullable=False, index=True
+    )
+    event: Mapped[str] = mapped_column(String, nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    ok: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False, index=True
+    )
+
+
+class AgentRun(Base):
+    """One run of a built-in agent (daily report, reminders, daily post)."""
+
+    __tablename__ = "agent_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    agent: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # "<agent>:<period>" for scheduled runs, so a period is never run twice.
+    run_key: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+    triggered_by: Mapped[str] = mapped_column(String, nullable=False, default="schedule")
+    status: Mapped[str] = mapped_column(String, nullable=False, default="running")  # running | ok | failed
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False, index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ClinicPost(Base):
+    """Clinic updates and skin-care tips shown to signed-in users."""
+
+    __tablename__ = "clinic_posts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String, nullable=False, default="tip")  # tip | announcement
+    status: Mapped[str] = mapped_column(String, nullable=False, default="draft", index=True)  # draft | published
+    source: Mapped[str] = mapped_column(String, nullable=False, default="admin")  # admin | agent | api
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)

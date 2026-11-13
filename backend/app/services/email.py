@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import smtplib
 import ssl
+from contextlib import contextmanager
 from email.message import EmailMessage
 
 from app.core.config import settings
@@ -23,25 +24,31 @@ class EmailDeliveryError(RuntimeError):
     pass
 
 
+@contextmanager
+def open_server():
+    """Connect to the configured mail server and log in. Raises OSError / SMTPException."""
+    if settings.smtp_port == 465:
+        server = smtplib.SMTP_SSL(
+            settings.smtp_host,
+            settings.smtp_port,
+            context=ssl.create_default_context(),
+            timeout=15,
+        )
+    else:
+        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15)
+
+    with server:
+        if settings.smtp_port != 465 and settings.smtp_use_tls:
+            server.starttls(context=ssl.create_default_context())
+        if settings.smtp_username:
+            server.login(settings.smtp_username, settings.smtp_password)
+        yield server
+
+
 def _send(message: EmailMessage) -> None:
     try:
-        if settings.smtp_port == 465:
-            with smtplib.SMTP_SSL(
-                settings.smtp_host,
-                settings.smtp_port,
-                context=ssl.create_default_context(),
-                timeout=15,
-            ) as server:
-                if settings.smtp_username:
-                    server.login(settings.smtp_username, settings.smtp_password)
-                server.send_message(message)
-        else:
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as server:
-                if settings.smtp_use_tls:
-                    server.starttls(context=ssl.create_default_context())
-                if settings.smtp_username:
-                    server.login(settings.smtp_username, settings.smtp_password)
-                server.send_message(message)
+        with open_server() as server:
+            server.send_message(message)
     except (OSError, smtplib.SMTPException) as exc:
         raise EmailDeliveryError("E-mail could not be sent") from exc
 

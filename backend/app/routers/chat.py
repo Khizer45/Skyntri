@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import asc
@@ -11,12 +12,16 @@ from app.db.database import get_db
 from app.db.models import ChatMessage, IngredientScan, SkinAnalysis, User
 from app.dependencies import get_current_user
 from app.schemas import ChatMessageOut, ChatRequest
-from app.services import rate_limit
+from app.services import llm, rate_limit
 from app.services.chat import (
     MAX_HISTORY_MESSAGES,
     MAX_USER_MESSAGE_LENGTH,
+    REPLY_LANGUAGES,
+    build_image_prompt,
     get_assistant_reply,
+    is_image_request,
 )
+from app.services.uploads import delete_upload, save_image_bytes
 
 
 router = APIRouter(
@@ -230,12 +235,46 @@ def send_message(
     # Generate assistant response
     # ------------------------------------------------------------------------
 
+    # ------------------------------------------------------------------------
+    # Illustration requests ("make an image of a morning routine")
+    # ------------------------------------------------------------------------
+
+    image_ref = None
+    image_note = None
+
+    if is_image_request(message):
+        if llm.image_provider() is None:
+            image_note = (
+                "I can't create images here yet: image generation has not been switched on "
+                "for this clinic. I can still explain it in words or as a table."
+            )
+        elif rate_limit.is_limited(
+            db, "chat_image", current_user.id, settings.chat_images_per_day, timedelta(days=1)
+        ):
+            image_note = "You have reached today's limit for images. Please try again tomorrow."
+        else:
+            rate_limit.record_event(db, "chat_image", current_user.id)
+            image_bytes = llm.generate_image(build_image_prompt(message))
+            if image_bytes:
+                try:
+                    image_ref = save_image_bytes(image_bytes, "chat_images")
+                except HTTPException:
+                    image_ref = None
+            if image_ref is None:
+                image_note = "I could not create that image this time. Please try again in a moment."
+
     try:
-        reply_text = get_assistant_reply(
-            message=message,
-            history=history_payload,
-            user_context=user_context,
-        )
+        if image_ref is not None:
+            reply_text = "Here is the illustration you asked for."
+        elif image_note is not None:
+            reply_text = image_note
+        else:
+            reply_text = get_assistant_reply(
+                message=message,
+                history=history_payload,
+                user_context=user_context,
+                language=None if payload.language == "auto" else payload.language,
+            )
 
     except Exception as exc:
         # The service is designed to use local fallback when Gemini fails.
@@ -265,6 +304,7 @@ def send_message(
         user_id=current_user.id,
         role="assistant",
         content=reply_text,
+        image_url=image_ref,
     )
 
     try:
@@ -281,6 +321,21 @@ def send_message(
         ) from exc
 
     return assistant_msg
+
+
+# ============================================================================
+# Capabilities
+# ============================================================================
+
+@router.get("/capabilities")
+def chat_capabilities(_user: User = Depends(get_current_user)):
+    """What the assistant can do with the current server configuration."""
+    return {
+        "llm": llm.text_available(),
+        "images": llm.image_provider() is not None,
+        "languages": [{"id": "auto", "label": "Auto"}]
+        + [{"id": key, "label": label.split(",")[0].split(" (")[0]} for key, label in REPLY_LANGUAGES.items()],
+    }
 
 
 # ============================================================================
@@ -331,6 +386,14 @@ def clear_chat_history(
     """
 
     try:
+        image_refs = [
+            row[0]
+            for row in db.query(ChatMessage.image_url).filter(
+                ChatMessage.user_id == current_user.id,
+                ChatMessage.image_url.isnot(None),
+            )
+        ]
+
         db.query(ChatMessage).filter(
             ChatMessage.user_id == current_user.id,
         ).delete(
@@ -338,6 +401,9 @@ def clear_chat_history(
         )
 
         db.commit()
+
+        for ref in image_refs:
+            delete_upload(ref)
 
     except Exception as exc:
         db.rollback()

@@ -18,13 +18,17 @@ from app.routers import (
     admin,
     analyses,
     auth,
+    automation,
     chat,
+    clinic,
     contact,
     files,
     history,
     ingredients,
+    payments,
     profile,
     progress,
+    public,
     reports,
     scans,
     shop,
@@ -86,7 +90,12 @@ def warm_up_model() -> None:
 async def lifespan(app: FastAPI):
     initialize_database()
     warm_up_model()
+
+    from app.services import scheduler
+
+    scheduler.start()
     yield
+    scheduler.stop()
 
 
 app = FastAPI(
@@ -217,6 +226,10 @@ app.include_router(chat.router)
 app.include_router(files.router)
 app.include_router(shop.router)
 app.include_router(admin.router)
+app.include_router(clinic.router)
+app.include_router(payments.router)
+app.include_router(automation.router)
+app.include_router(public.router)
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +285,17 @@ def readiness():
 
     from app.services import disease_screening
 
-    if settings.disease_screening_enabled:
+    disease_enabled = bool(settings.disease_screening_enabled)
+    try:
+        # An administrator's choice (Admin -> Settings) overrides the environment.
+        from app.services import app_settings
+
+        with SessionLocal() as session:
+            disease_enabled = app_settings.get_bool(session, "disease_screening_enabled")
+    except Exception:
+        pass
+
+    if disease_enabled:
         files_ok = disease_screening.model_files_present()
         checks["disease_model"] = {
             "ok": files_ok,

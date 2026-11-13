@@ -5,16 +5,13 @@
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
   body {
-    @apply bg-surface-light text-neutral-800 dark:bg-surface-dark dark:text-neutral-200 font-sans;
-    background-image:
-      radial-gradient(60rem 30rem at 100% -10%, rgba(18, 183, 154, 0.07), transparent 60%),
-      radial-gradient(40rem 24rem at -10% 110%, rgba(248, 96, 58, 0.05), transparent 60%);
-    background-attachment: fixed;
+    @apply bg-surface-light font-sans text-base text-neutral-800 dark:bg-surface-dark dark:text-neutral-200;
   }
   h1, h2, h3 {
-    @apply font-display tracking-tight;
+    @apply tracking-tight;
   }
   ::selection {
     @apply bg-brand-200 dark:bg-brand-800;
@@ -22,14 +19,75 @@
   input, select, textarea {
     @apply transition-colors;
   }
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500/50;
+  }
 }
 
 @layer components {
   .field {
-    @apply w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-neutral-700 dark:bg-panel-dark dark:text-neutral-100;
+    @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:bg-neutral-100 disabled:text-neutral-500 dark:border-white/15 dark:bg-panel-dark dark:text-neutral-100 dark:disabled:bg-white/5;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300;
+  }
+  .hint {
+    @apply mt-1 text-xs text-neutral-500 dark:text-neutral-400;
   }
   .badge {
-    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold;
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium;
+  }
+  .link {
+    @apply font-medium text-brand-700 underline-offset-2 hover:underline dark:text-brand-300;
+  }
+  .muted {
+    @apply text-neutral-500 dark:text-neutral-400;
+  }
+  .divide-soft > :not([hidden]) ~ :not([hidden]) {
+    @apply border-t border-neutral-200 dark:border-white/10;
+  }
+
+  /* Rendered Markdown (assistant answers, clinic posts) */
+  .prose-chat {
+    @apply text-[0.9375rem] leading-7 text-neutral-800 dark:text-neutral-200;
+    overflow-wrap: break-word;
+  }
+  .prose-chat > * + * {
+    @apply mt-3;
+  }
+  .prose-chat h1, .prose-chat h2, .prose-chat h3, .prose-chat h4 {
+    @apply mt-5 text-base font-semibold text-neutral-900 dark:text-white;
+  }
+  .prose-chat ul {
+    @apply list-disc space-y-1 pl-5;
+  }
+  .prose-chat ol {
+    @apply list-decimal space-y-1 pl-5;
+  }
+  .prose-chat a {
+    @apply text-brand-700 underline underline-offset-2 dark:text-brand-300;
+  }
+  .prose-chat strong {
+    @apply font-semibold text-neutral-900 dark:text-white;
+  }
+  .prose-chat code {
+    @apply rounded bg-neutral-100 px-1 py-0.5 text-[0.85em] dark:bg-white/10;
+  }
+  .prose-chat blockquote {
+    @apply border-l-2 border-neutral-300 pl-3 text-neutral-600 dark:border-white/20 dark:text-neutral-300;
+  }
+  .prose-chat .table-wrap {
+    @apply overflow-x-auto rounded-lg border border-neutral-200 dark:border-white/10;
+  }
+  .prose-chat table {
+    @apply w-full border-collapse text-sm;
+    min-width: 22rem;
+  }
+  .prose-chat th {
+    @apply bg-neutral-50 px-3 py-2 text-left font-semibold text-neutral-700 dark:bg-white/5 dark:text-neutral-200;
+  }
+  .prose-chat td {
+    @apply border-t border-neutral-200 px-3 py-2 align-top dark:border-white/10;
   }
 }
 
@@ -43,14 +101,14 @@
   }
   .thin-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgb(148 163 184 / 0.4) transparent;
+    scrollbar-color: rgb(148 148 140 / 0.4) transparent;
   }
   .thin-scrollbar::-webkit-scrollbar {
     width: 6px;
   }
   .thin-scrollbar::-webkit-scrollbar-thumb {
     border-radius: 9999px;
-    background: rgb(148 163 184 / 0.4);
+    background: rgb(148 148 140 / 0.4);
   }
 }
 

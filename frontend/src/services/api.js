@@ -546,7 +546,17 @@ export async function getIngredients(params = {}) {
 // AI Assistant
 // ---------------------------------------------------------------------------
 
-export async function sendChatMessage(message) {
+function mapChatMessage(item) {
+  return {
+    id: item?.id,
+    role: item?.role || 'assistant',
+    content: item?.content || '',
+    imageUrl: assetUrl(item?.image_url),
+    timestamp: item?.created_at,
+  }
+}
+
+export async function sendChatMessage(message, language = 'auto') {
   if (!message || !message.trim()) {
     throw new Error('Message cannot be empty.')
   }
@@ -555,15 +565,11 @@ export async function sendChatMessage(message) {
     method: 'POST',
     body: JSON.stringify({
       message: message.trim(),
+      language,
     }),
   })
 
-  return {
-    id: data?.id,
-    role: data?.role || 'assistant',
-    content: data?.content || '',
-    timestamp: data?.created_at,
-  }
+  return mapChatMessage(data)
 }
 
 export async function getChatHistory() {
@@ -571,16 +577,11 @@ export async function getChatHistory() {
     method: 'GET',
   })
 
-  if (!Array.isArray(data)) {
-    return []
-  }
+  return Array.isArray(data) ? data.map(mapChatMessage) : []
+}
 
-  return data.map((item) => ({
-    id: item.id,
-    role: item.role,
-    content: item.content,
-    timestamp: item.created_at,
-  }))
+export async function getChatCapabilities() {
+  return request('/chat/capabilities', { method: 'GET' })
 }
 
 export async function clearChatHistory() {
@@ -756,6 +757,8 @@ export async function updateProfile(payload) {
       skin_type:
         payload.skinType ??
         payload.skin_type,
+
+      phone: payload.phone,
     }),
   })
 
@@ -997,3 +1000,180 @@ export async function adminUpdatePayment(orderId, paymentStatus) {
     body: JSON.stringify({ payment_status: paymentStatus }),
   })
 }
+
+// ---------------------------------------------------------------------------
+// Account: Google sign-in, e-mail, first password
+// ---------------------------------------------------------------------------
+
+let publicConfigPromise = null
+
+export function getPublicConfig() {
+  if (!publicConfigPromise) {
+    publicConfigPromise = request('/config', { method: 'GET' }).catch((error) => {
+      publicConfigPromise = null
+      throw error
+    })
+  }
+  return publicConfigPromise
+}
+
+export async function loginWithGoogle(credential) {
+  const data = await request('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+  })
+
+  if (data?.access_token) {
+    setAuthToken(data.access_token)
+  }
+
+  return { user: mapUser(data?.user), token: data?.access_token }
+}
+
+export async function setPassword(newPassword) {
+  return request('/auth/set-password', {
+    method: 'POST',
+    body: JSON.stringify({ new_password: newPassword }),
+  })
+}
+
+export async function changeEmail(newEmail, currentPassword) {
+  return mapUser(
+    await request('/profile/email', {
+      method: 'POST',
+      body: JSON.stringify({ new_email: newEmail, current_password: currentPassword }),
+    })
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Clinic: doctors, appointments, messages, prescriptions
+// ---------------------------------------------------------------------------
+
+const json = (method, body) => ({ method, body: body === undefined ? undefined : JSON.stringify(body) })
+
+function mapDoctor(doctor) {
+  return doctor ? { ...doctor, avatarUrl: assetUrl(doctor.avatar_url) } : doctor
+}
+
+function mapAppointment(item) {
+  if (!item) return item
+  return {
+    ...item,
+    analysis: item.analysis ? { ...item.analysis, imageUrl: assetUrl(item.analysis.image_url) } : null,
+  }
+}
+
+export const listDoctors = async () => (await request('/doctors')).map(mapDoctor)
+export const getDoctor = async (id) => mapDoctor(await request(`/doctors/${encodeURIComponent(id)}`))
+export const getDoctorSlots = (id, day) =>
+  request(`/doctors/${encodeURIComponent(id)}/slots?day=${encodeURIComponent(day)}`)
+
+export const applyAsDoctor = async (payload) => mapDoctor(await request('/doctors/apply', json('POST', payload)))
+export async function getMyDoctorProfile() {
+  try {
+    return mapDoctor(await request('/doctors/me'))
+  } catch (error) {
+    if (error.status === 404) return null
+    throw error
+  }
+}
+export const updateMyDoctorProfile = async (payload) => mapDoctor(await request('/doctors/me', json('PUT', payload)))
+export const setMyAvailability = async (windows) =>
+  mapDoctor(await request('/doctors/me/availability', json('PUT', { windows })))
+
+export const bookAppointment = async (payload) => mapAppointment(await request('/appointments', json('POST', payload)))
+export const listMyAppointments = async () => (await request('/appointments')).map(mapAppointment)
+export const getAppointment = async (id) => mapAppointment(await request(`/appointments/${encodeURIComponent(id)}`))
+export const cancelAppointment = async (id, reason) =>
+  mapAppointment(await request(`/appointments/${encodeURIComponent(id)}/cancel`, json('POST', { reason: reason || null })))
+
+export const listAppointmentMessages = (id) => request(`/appointments/${encodeURIComponent(id)}/messages`)
+export const sendAppointmentMessage = (id, body) =>
+  request(`/appointments/${encodeURIComponent(id)}/messages`, json('POST', { body }))
+
+export async function downloadPrescription(id) {
+  const response = await fetch(`${API_URL}/appointments/${encodeURIComponent(id)}/prescription.pdf`, {
+    headers: { Authorization: `Bearer ${getStoredToken()}` },
+  })
+  if (!response.ok) {
+    const data = await parseResponse(response)
+    throw new Error((data && data.detail) || 'The prescription could not be downloaded.')
+  }
+  const url = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'skyntri-prescription.pdf'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
+}
+
+export const doctorListAppointments = async (scope = 'upcoming') =>
+  (await request(`/doctor/appointments?scope=${scope}`)).map(mapAppointment)
+export const doctorUpdateAppointment = async (id, payload) =>
+  mapAppointment(await request(`/doctor/appointments/${encodeURIComponent(id)}`, json('PATCH', payload)))
+export const doctorSavePrescription = (id, payload) =>
+  request(`/doctor/appointments/${encodeURIComponent(id)}/prescription`, json('PUT', payload))
+export const doctorListPatients = () => request('/doctor/patients')
+
+export const adminListDoctors = async () => (await request('/admin/doctors')).map(mapDoctor)
+export const adminReviewDoctor = async (id, status) =>
+  mapDoctor(await request(`/admin/doctors/${encodeURIComponent(id)}`, json('PATCH', { status })))
+export const adminListAppointments = async (status) =>
+  (await request(`/admin/appointments${status ? `?status=${status}` : ''}`)).map(mapAppointment)
+export const adminSetAppointmentPayment = async (id, paymentStatus) =>
+  mapAppointment(
+    await request(`/admin/appointments/${encodeURIComponent(id)}/payment?payment_status=${paymentStatus}`, json('PATCH'))
+  )
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+export const getPaymentMethods = (purpose, referenceId) =>
+  request(`/payments/methods?purpose=${purpose}&reference_id=${encodeURIComponent(referenceId)}`)
+export const startCheckout = (purpose, referenceId, provider) =>
+  request('/payments/checkout', json('POST', { purpose, reference_id: referenceId, provider }))
+export const confirmPayment = (id) => request(`/payments/${encodeURIComponent(id)}/confirm`, json('POST'))
+export const cancelPayment = (id) => request(`/payments/${encodeURIComponent(id)}/cancel`, json('POST'))
+export const adminListPayments = () => request('/admin/payments')
+
+// Only ever send the browser to the payment providers' own pages.
+const PAYMENT_HOSTS = /^(checkout\.stripe\.com|getsafepay\.com|sandbox\.api\.getsafepay\.com|www\.paypal\.com|www\.sandbox\.paypal\.com)$/
+
+export function isSafePaymentUrl(url) {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' && PAYMENT_HOSTS.test(parsed.hostname)
+  } catch {
+    return false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Admin: settings, automation, posts
+// ---------------------------------------------------------------------------
+
+export const adminGetSettings = () => request('/admin/settings')
+export const adminUpdateSetting = (key, value) => request('/admin/settings', json('PUT', { key, value }))
+export const adminAuditLog = () => request('/admin/audit?limit=50')
+export const adminTestConnection = (name) => request(`/admin/connections/${encodeURIComponent(name)}/test`, json('POST'))
+
+export const adminAutomation = () => request('/admin/automation')
+export const adminCreateApiKey = (name, scopes) => request('/admin/automation/api-keys', json('POST', { name, scopes }))
+export const adminRevokeApiKey = (id) => request(`/admin/automation/api-keys/${encodeURIComponent(id)}`, json('DELETE'))
+export const adminCreateWebhook = (payload) => request('/admin/automation/webhooks', json('POST', payload))
+export const adminGetWebhook = (id) => request(`/admin/automation/webhooks/${encodeURIComponent(id)}`)
+export const adminUpdateWebhook = (id, payload) =>
+  request(`/admin/automation/webhooks/${encodeURIComponent(id)}`, json('PUT', payload))
+export const adminDeleteWebhook = (id) => request(`/admin/automation/webhooks/${encodeURIComponent(id)}`, json('DELETE'))
+export const adminTestWebhook = (id) => request(`/admin/automation/webhooks/${encodeURIComponent(id)}/test`, json('POST'))
+export const adminRunAgent = (name) => request(`/admin/automation/agents/${encodeURIComponent(name)}/run`, json('POST'))
+
+export const adminListPosts = () => request('/admin/posts')
+export const adminCreatePost = (payload) => request('/admin/posts', json('POST', payload))
+export const adminUpdatePost = (id, payload) => request(`/admin/posts/${encodeURIComponent(id)}`, json('PATCH', payload))
+export const adminDeletePost = (id) => request(`/admin/posts/${encodeURIComponent(id)}`, json('DELETE'))
+export const getPosts = (limit = 3) => request(`/posts?limit=${limit}`)

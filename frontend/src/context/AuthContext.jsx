@@ -82,6 +82,20 @@ export function AuthProvider({ children }) {
     return result
   }
 
+  const loginWithGoogle = async (credential) => {
+    const result = await api.loginWithGoogle(credential)
+    setUser(result.user)
+    localStorage.setItem('skyntri-user', JSON.stringify(result.user))
+    return result
+  }
+
+  const refreshUser = async () => {
+    const current = await api.getCurrentUser()
+    setUser(current)
+    localStorage.setItem('skyntri-user', JSON.stringify(current))
+    return current
+  }
+
   const updateUser = (updates) => {
     setUser((previous) => {
       const next = {
@@ -110,6 +124,8 @@ export function AuthProvider({ children }) {
         user,
         loading,
         login,
+        loginWithGoogle,
+        refreshUser,
         register,
         logout,
         updateUser,

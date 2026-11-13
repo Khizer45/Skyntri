@@ -38,7 +38,7 @@ from app.schemas_shop import (
     ProductSearchOut,
     RecommendationOut,
 )
-from app.services import rate_limit, shop
+from app.services import automation, rate_limit, shop
 from app.services.skin_analysis import CONDITION_RECOMMENDATIONS, DISPLAY_NAMES
 from app.services.uploads import delete_upload, save_upload
 
@@ -421,6 +421,10 @@ def place_order(payload: CheckoutIn, current_user: User = Depends(get_current_us
         raise
 
     db.refresh(order)
+    automation.emit(db, "order.created", {
+        "order_id": order.id, "items": len(order.items), "subtotal": round(order.subtotal, 2),
+        "currency": order.currency, "city": order.shipping_city,
+    })
     return _order_out(order)
 
 

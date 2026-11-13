@@ -399,7 +399,7 @@ def scan_ingredients(
         if not tokens:
             raise HTTPException(
                 status_code=(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY
+                    status.HTTP_422_UNPROCESSABLE_CONTENT
                 ),
                 detail=(
                     "No ingredient names could be "

@@ -1,4 +1,4 @@
-import { AlertTriangle, Camera, CheckCircle2, Info, ScanFace, Sparkles, XCircle } from 'lucide-react'
+import { AlertTriangle, Camera, CheckCircle2, Info, ScanFace, Sparkles, Stethoscope, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Button from '../components/Button.jsx'
@@ -57,7 +57,7 @@ export default function SkinAnalysis() {
   }
 
   return (
-    <DashboardLayout title="Skin Analysis" subtitle="AI estimate of visible skin concerns — not a diagnosis">
+    <DashboardLayout title="Skin analysis" subtitle="AI estimate of visible skin concerns, not a diagnosis">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-5">
           <div className="mb-4 flex items-center gap-2">
@@ -116,7 +116,7 @@ export default function SkinAnalysis() {
           </fieldset>
 
           <ImageUploader
-            label="Upload a clear photo of your face"
+            label="Take or upload a clear photo"
             hint="Front-facing or close-up, good light, in focus. JPEG/PNG/WebP up to 10MB"
             onChange={(f) => {
               setFile(f)
@@ -271,6 +271,13 @@ export default function SkinAnalysis() {
                 <Sparkles className="h-4 w-4" /> See affordable products with these ingredients
               </Link>
             )}
+
+            <Link
+              to="/doctors"
+              className="mt-3 flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+            >
+              <Stethoscope className="h-4 w-4" /> Want a doctor's opinion? Book a dermatologist
+            </Link>
 
             {result.disclaimer && (
               <div className="mt-5 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-200">

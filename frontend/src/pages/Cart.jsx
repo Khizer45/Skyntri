@@ -126,7 +126,7 @@ export default function Cart() {
               <input className={inputClass} required minLength={2} placeholder="City" value={shipping.shipping_city} onChange={field('shipping_city')} />
               <textarea className={inputClass} rows={2} placeholder="Notes (optional)" value={shipping.notes} onChange={field('notes')} />
               <p className="flex items-center gap-1.5 text-xs text-neutral-500">
-                <Truck className="h-4 w-4" /> Payment: cash on delivery
+                <Truck className="h-4 w-4 shrink-0" /> Pay cash on delivery, or pay by card or PayPal from My Orders after placing the order.
               </p>
               <Button type="submit" className="w-full" loading={placing} disabled={!cart.can_checkout}>
                 Place order

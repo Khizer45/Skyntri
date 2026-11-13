@@ -8,6 +8,7 @@ import { Spinner } from '../components/LoadingState.jsx'
 import { formatPrice } from '../components/ProductCard.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import DashboardLayout from '../layouts/DashboardLayout.jsx'
+import PaymentOptions from '../components/PaymentOptions.jsx'
 import * as api from '../services/api.js'
 
 export const STATUS_STYLES = {
@@ -46,7 +47,7 @@ export function OrderSummary({ order, children }) {
         ))}
       </ul>
       <p className="mt-2 text-xs text-neutral-500">
-        Deliver to {order.shipping_name}, {order.shipping_address}, {order.shipping_city} · {order.shipping_phone} · cash on delivery
+        Deliver to {order.shipping_name}, {order.shipping_address}, {order.shipping_city} · {order.shipping_phone} · {{ card: 'paid by card', paypal: 'paid with PayPal' }[order.payment_method] || 'cash on delivery'}
         {' · '}
         <span className={order.payment_status === 'paid' ? 'font-semibold text-brand-700 dark:text-brand-300' : ''}>
           payment {order.payment_status || 'unpaid'}
@@ -60,6 +61,7 @@ export function OrderSummary({ order, children }) {
 export default function Orders() {
   const [orders, setOrders] = useState(null)
   const [busy, setBusy] = useState(null)
+  const [paying, setPaying] = useState(null)
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -92,10 +94,22 @@ export default function Orders() {
       <div className="space-y-4">
         {orders?.map((order) => (
           <OrderSummary key={order.id} order={order}>
-            {order.status === 'pending' && (
-              <Button size="sm" variant="outline" className="mt-3" loading={busy === order.id} onClick={() => cancel(order.id)}>
-                Cancel order
-              </Button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {order.status !== 'cancelled' && (order.payment_status || 'unpaid') === 'unpaid' && (
+                <Button size="sm" onClick={() => setPaying(paying === order.id ? null : order.id)}>
+                  {paying === order.id ? 'Hide payment options' : 'Pay online'}
+                </Button>
+              )}
+              {order.status === 'pending' && (
+                <Button size="sm" variant="outline" loading={busy === order.id} onClick={() => cancel(order.id)}>
+                  Cancel order
+                </Button>
+              )}
+            </div>
+            {paying === order.id && (
+              <div className="mt-3 border-t border-neutral-200 pt-3 dark:border-white/10">
+                <PaymentOptions purpose="order" referenceId={order.id} offlineLabel="pay cash on delivery" />
+              </div>
             )}
           </OrderSummary>
         ))}

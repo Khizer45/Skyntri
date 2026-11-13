@@ -57,6 +57,31 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      # Optional connections: empty = that feature is hidden. See docs/INTEGRATIONS.md
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_IMAGE_ENABLED: ${LLM_IMAGE_ENABLED:-false}
+      CARD_PROVIDER: ${CARD_PROVIDER:-auto}
+      SAFEPAY_API_KEY: ${SAFEPAY_API_KEY:-}
+      SAFEPAY_SECRET_KEY: ${SAFEPAY_SECRET_KEY:-}
+      SAFEPAY_WEBHOOK_SECRET: ${SAFEPAY_WEBHOOK_SECRET:-}
+      SAFEPAY_ENVIRONMENT: ${SAFEPAY_ENVIRONMENT:-sandbox}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID:-}
+      PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET:-}
+      PAYPAL_MODE: ${PAYPAL_MODE:-sandbox}
+      PAYPAL_CURRENCY: ${PAYPAL_CURRENCY:-USD}
+      PAYPAL_EXCHANGE_RATE: ${PAYPAL_EXCHANGE_RATE:-0}
+      CLINIC_NAME: ${CLINIC_NAME:-Skyntri Clinic}
+      CLINIC_TIMEZONE: ${CLINIC_TIMEZONE:-Asia/Karachi}
+      AGENTS_SCHEDULER_ENABLED: ${AGENTS_SCHEDULER_ENABLED:-false}
+      AGENT_DAILY_HOUR: ${AGENT_DAILY_HOUR:-8}
+      # The n8n container (service "n8n" below) may receive webhooks.
+      AUTOMATION_ALLOWED_HOSTS: ${AUTOMATION_ALLOWED_HOSTS:-n8n}
     volumes:
       # Uploaded images survive restarts (the database lives in skyntri-pg)
       - skyntri-data:/data
@@ -76,6 +101,26 @@ services:
       - backend
     restart: unless-stopped
 
+  # Optional automation tool. Start it with:
+  #     docker compose --profile automation up -d
+  # then open http://localhost:5678. Guide: docs/INTEGRATIONS.md
+  n8n:
+    image: n8nio/n8n:2.47.4
+    profiles: ["automation"]
+    container_name: skyntri-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_LISTEN_ADDRESS: 0.0.0.0
+      GENERIC_TIMEZONE: ${CLINIC_TIMEZONE:-Asia/Karachi}
+      # Lets the "Check signature" step use Node's crypto module.
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto
+      N8N_DIAGNOSTICS_ENABLED: "false"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    restart: unless-stopped
+
 volumes:
+  n8n-data:
   skyntri-data:
   skyntri-pg:

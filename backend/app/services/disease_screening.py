@@ -186,8 +186,11 @@ def interpret(probs: np.ndarray, meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def screen_image(image_path: str | Path) -> dict[str, Any]:
-    if not is_available():
-        raise DiseaseModelUnavailable("Disease screening is not enabled.")
+    # Whether screening is switched on is decided by the caller (the
+    # administrator's setting overrides DISEASE_SCREENING_ENABLED, see
+    # routers/analyses.disease_track_available). Here only the files matter.
+    if not model_files_present():
+        raise DiseaseModelUnavailable("Disease screening model files are not installed.")
 
     meta = load_metadata()
     model = load_model()

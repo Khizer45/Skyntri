@@ -68,9 +68,11 @@ def _safe_analysis_error(exc: Exception) -> str:
             "Please try another clear image."
         )
 
+    # Anything else is a fault on the server (model file, memory, ...),
+    # not a problem with the photo, so do not ask for another photo.
     return (
-        "Skin analysis could not be completed. "
-        "Please try again with a clear skin image."
+        "Skin analysis is not working at the moment because of a problem on "
+        "the server. Please try again later or tell the clinic."
     )
 
 
@@ -320,6 +322,12 @@ def analyze_uploaded_skin_image(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The analysis service is busy. Please try again in a moment.",
             headers={"Retry-After": "10"},
+        ) from exc
+    except disease_screening.DiseaseModelUnavailable as exc:
+        delete_upload(image_url)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=_unavailable_reason(track),
         ) from exc
     except Exception as exc:
         delete_upload(image_url)

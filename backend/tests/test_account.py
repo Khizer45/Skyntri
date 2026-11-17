@@ -189,3 +189,47 @@ def test_admin_can_switch_disease_screening(api, monkeypatch, tmp_path):
     assert client.put("/admin/settings", json={"key": "secret_key", "value": True}, headers=admin).status_code == 404
     actions = [e["action"] for e in client.get("/admin/audit", headers=admin).json()]
     assert actions.count("setting.changed") == 2
+
+
+def test_disease_analysis_runs_when_switched_on_in_the_admin_panel(api, monkeypatch, tmp_path):
+    """The admin switch must be enough: DISEASE_SCREENING_ENABLED in .env may stay false."""
+    import json
+
+    import numpy as np
+
+    from app.services import disease_screening
+    from app.services.image_gate import GateResult
+    from tests.helpers import make_skin_closeup, to_bytes
+    from tests.test_model_plugins import META
+
+    client, _ = api
+    monkeypatch.setattr(settings, "admin_emails", "boss@test.com")
+    monkeypatch.setattr(settings, "disease_screening_enabled", False)
+    model, meta = tmp_path / "d.keras", tmp_path / "d.json"
+    model.write_bytes(b"x")
+    meta.write_text(json.dumps(META))
+    monkeypatch.setattr(settings, "disease_model_path", str(model))
+    monkeypatch.setattr(settings, "disease_model_metadata_path", str(meta))
+
+    class FakeModel:
+        def predict(self, batch, verbose=0):
+            return np.array([[0.05, 0.85, 0.05, 0.05]], dtype=np.float32)
+
+    disease_screening.load_metadata.cache_clear()
+    monkeypatch.setattr(disease_screening, "load_model", lambda: FakeModel())
+    monkeypatch.setattr(disease_screening, "_preprocess", lambda path, size, tta=False: np.zeros((1, size, size, 3)))
+    monkeypatch.setattr("app.routers.analyses.assess_image",
+                        lambda path, track="facial_concerns": GateResult("accepted", "accepted", "ok"))
+
+    admin = register(client, "boss@test.com")
+    user = register(client, "patient@test.com")
+    assert client.put("/admin/settings", json={"key": "disease_screening_enabled", "value": True},
+                      headers=admin).status_code == 200
+
+    response = client.post(
+        "/analyses/analyze", headers=user, data={"track": "disease_screening"},
+        files={"file": ("skin.jpg", to_bytes(make_skin_closeup()), "image/jpeg")},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["analysis_track"] == "disease_screening"
+    disease_screening.load_metadata.cache_clear()
